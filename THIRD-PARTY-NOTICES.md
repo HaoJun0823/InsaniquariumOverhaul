@@ -1,0 +1,41 @@
+# Third-party notices
+
+This repository is **AGPL-3.0**. Game assets are NOT included and remain the
+property of PopCap Games; you must supply your own retail copy.
+
+## Vindirect/WinFish — decompilation (submodule, unmodified)
+
+- <https://github.com/Vindirect/WinFish>
+- The Insaniquarium Deluxe decompilation. Used as a read-only submodule at
+  `external/winfish`. Never modified in place.
+- License: see `external/winfish/"PopCap Framework License.txt"` and
+  `external/winfish/"Other Licenses.txt"`.
+
+## teampopwork/poplib — portable framework (submodule, unmodified)
+
+- <https://github.com/teampopwork/poplib>
+- SDL3 / OpenAL / stb_image rewrite of PopCap's SexyAppFramework.
+- License: PopCap Games Framework License 1.1 + AGPL-3.0 for Team PopWork
+  modifications. See `external/poplib/LICENSE` and `LICENSE.popcap`.
+
+## SaMeiers/insaniquarium-port — build/port scaffolding (adapted)
+
+- <https://github.com/SaMeiers/insaniquarium-port> — **AGPL-3.0**
+- The following files in `port/` are derived from that project and retain its
+  AGPL-3.0 licence:
+  - `port.sh`, `include-map.txt`, `copy-assets.sh`, `verify-assets.py`
+  - `fixups/*.py`, `fixups/Window.cpp`
+  - `CMakeLists.txt` (structure and MSVC `/permissive` notes)
+- Adaptations made here: paths retargeted to our `external/` submodule layout,
+  `/utf-8` added for the TTF/i18n path, Windows SDK rc/mt wired explicitly.
+
+## SaMeiers/PopLib — upstream bug fixes (reference only, not vendored)
+
+- <https://github.com/SaMeiers/PopLib> — **AGPL-3.0**
+- Its `PORT-CHANGES.md` documents framework bugs that upstream (archived) never
+  fixed. See `docs/UI-I18N-DESIGN.md` for the decision on how we consume them.
+
+## Reference repositories (not incorporated)
+
+- <https://github.com/ChanseyIsTheBest/insaniquarium_nx> — Switch port
+- <https://github.com/sureandrew/SexyAppFramework> — framework reference

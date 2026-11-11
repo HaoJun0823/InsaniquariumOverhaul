@@ -1,5 +1,15 @@
 build/
 port/generated/
+port/winfish/
+port/bin/
+# 游戏零售资产（PopCap 版权，由 copy-assets.sh 拷入，不入库）
+port/assets/data/
+port/assets/images/
+port/assets/music/
+port/assets/sounds/
+port/assets/fishsongs/
+port/assets/*.pak
+# 我们自己的字体与 resources.xml 覆盖文件保留入库
 out/
 cmake-build-*/
 *.user
