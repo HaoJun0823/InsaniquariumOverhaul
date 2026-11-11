@@ -1,6 +1,6 @@
 [submodule "external/winfish"]
 	path = external/winfish
-	url = https://github.com/HaoJun0823/WinFishCN
+	url = https://github.com/Vindirect/WinFish
 [submodule "external/poplib"]
 	path = external/poplib
 	url = https://github.com/teampopwork/poplib
