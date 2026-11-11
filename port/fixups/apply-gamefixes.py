@@ -224,8 +224,8 @@ def main():
     # playing and nothing ever applauded.
     ok &= sub("FishSongMgr.cpp",
               b"        FishSong aSong;",
-              b"        FishSong *aSong = new FishSong();",
-              "FishSongMgr: applause song was built on the stack")
+              b"        FishSong* aSong = new FishSong();",
+              "FishSongMgr: applause song is heap-allocated")
 
     ok &= sub("FishSongMgr.cpp",
               b"        aSong.mNoteDataVector.push_back(aNote);\n"
@@ -236,12 +236,14 @@ def main():
               b"        aNote = NoteData();",
               "FishSongMgr: applause first note")
 
+    # Upstream Vindirect/WinFish already allocates the applause song on the
+    # heap. These substitutions are kept as idempotency checks: the "new"
+    # spelling matches current upstream, so a re-derived port reports
+    # [already applied] instead of a misleading [FAILED].
     ok &= sub("FishSongMgr.cpp",
-              b"        aSong.mNoteDataVector.push_back(aNote);\n"
               b"        AddSong(&aSong);",
-              b"        aSong->mNoteDataVector.push_back(aNote);\n"
               b"        AddSong(aSong);",
-              "FishSongMgr: applause second note and hand-off")
+              "FishSongMgr: applause song handed off by pointer")
 
     # --- 8. StopFishSong walks an iterator it just invalidated --------------
     #
@@ -356,6 +358,40 @@ def main():
               b"        Die(true);\n"
               b"    return false;",
               "Fish.cpp: play death sound on normal starvation death")
+
+    # --- N. Legacy "check for updates" modal on every fresh profile -------
+    #
+    # Symptom: on a first launch the loading screen is immediately covered by
+    # an "Updates / Do you want to check for updates..." dialog. Its header and
+    # body were drawn at the top-left of the screen and the Yes/No buttons were
+    # empty (see the SysFont coordinate fix in port/make-patches.py), so the
+    # whole game looked broken before the player could do anything.
+    #
+    # Cause: SexyApp::ShouldCheckForUpdate() returns true whenever
+    # LastVerCheckQueryTime == 0 (i.e. any fresh registry.json), the previous
+    # shutdown was not graceful, or a week has passed. LoadingThreadCompleted()
+    # then raises the modal. The update service it points at (popcap.com) has
+    # been offline for years, so answering Yes can only fail.
+    #
+    # Fix: never show it in normal play. OVERHAUL_UPDATE_DIALOG=legacy restores
+    # the original condition and =force always shows it, so the automated UI
+    # regression can still reproduce and guard the dialog renderer.
+    ok &= sub("WinFishApp.cpp",
+              b"#include <filesystem>",
+              b"#include <filesystem>\n#include <cstdlib>",
+              "WinFishApp.cpp: <cstdlib> for std::getenv (update dialog switch)")
+
+    ok &= sub("WinFishApp.cpp",
+              b"\tif (ShouldCheckForUpdate())\n"
+              b"\t\tDoUpdateDialog();",
+              b"\t// Overhaul: PopCap's update service is long gone; see\n"
+              b"\t// port/fixups/apply-gamefixes.py. Kept reachable only for\n"
+              b"\t// the automated UI regression (OVERHAUL_UPDATE_DIALOG).\n"
+              b"\tconst char *aUpdateMode = std::getenv(\"OVERHAUL_UPDATE_DIALOG\");\n"
+              b"\tconst std::string aMode = (aUpdateMode != NULL) ? aUpdateMode : \"\";\n"
+              b"\tif (aMode == \"force\" || (aMode == \"legacy\" && ShouldCheckForUpdate()))\n"
+              b"\t\tDoUpdateDialog();",
+              "disable the dead check-for-updates modal by default")
 
     return 0 if ok else 1
 

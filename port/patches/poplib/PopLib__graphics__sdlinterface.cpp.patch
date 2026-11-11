@@ -1,16 +1,100 @@
 --- a/PopLib/graphics/sdlinterface.cpp
 +++ b/PopLib/graphics/sdlinterface.cpp
-@@ -5,7 +5,8 @@
+@@ -5,10 +5,91 @@
  #include "misc/critsect.hpp"
  #include "graphics.hpp"
  #include "memoryimage.hpp"
 -#include "imgui/imguimanager.hpp"
 +#include "imgui/imguimanager.hpp"
 +#include <stdio.h>
++#include <stdlib.h>
++#include <cstdio>
++#include <cstdlib>
++#include <string>
++#include <vector>
++#include <sstream>
++#include <algorithm>
++#include <filesystem>
++#include <system_error>
  #include <SDL3_ttf/SDL_ttf.h>
  
- using namespace PopLib;
-@@ -105,10 +106,10 @@
+-using namespace PopLib;
++using namespace PopLib;
++// Overhaul: unattended frame capture for the automated UI smoke test.
++//   OVERHAUL_CAPTURE_FRAMES=1,60,240   exact 1-based Redraw frame numbers
++//   OVERHAUL_CAPTURE_EVERY=60          periodic sampling instead / in addition
++//   OVERHAUL_CAPTURE_MAX=12            cap on periodic captures
++//   OVERHAUL_CAPTURE_DIR=captures      output directory, created on demand
++// Reading the composited frame BEFORE SDL_RenderPresent also works with the
++// dummy video driver, so this needs no desktop, focus, or injected keystroke.
++static void OverhaulMaybeCapture(SDL_Renderer *theRenderer, int theFrame)
++{
++	static bool sInit = false;
++	static std::vector<int> sFrames;
++	static int sEvery = 0;
++	static int sMax = 0;
++	static int sWritten = 0;
++	static std::string sDir;
++	if (!sInit)
++	{
++		sInit = true;
++		const char *aSpec = std::getenv("OVERHAUL_CAPTURE_FRAMES");
++		const char *aEvery = std::getenv("OVERHAUL_CAPTURE_EVERY");
++		const char *aMax = std::getenv("OVERHAUL_CAPTURE_MAX");
++		const char *aOut = std::getenv("OVERHAUL_CAPTURE_DIR");
++		sDir = (aOut && *aOut) ? aOut : "captures";
++		sEvery = aEvery ? std::atoi(aEvery) : 0;
++		sMax = aMax ? std::atoi(aMax) : 0;
++		if (aSpec)
++		{
++			std::stringstream aSS(aSpec);
++			std::string aToken;
++			while (std::getline(aSS, aToken, ','))
++			{
++				int aF = std::atoi(aToken.c_str());
++				if (aF > 0)
++					sFrames.push_back(aF);
++			}
++		}
++		if (!sFrames.empty() || sEvery > 0)
++		{
++			std::error_code aEC;
++			std::filesystem::create_directories(sDir, aEC);
++			std::fprintf(stderr, "[overhaul-capture] dir=%s frames=%zu every=%d max=%d\n",
++				sDir.c_str(), sFrames.size(), sEvery, sMax);
++		}
++	}
++	bool aWant = !sFrames.empty() &&
++		std::find(sFrames.begin(), sFrames.end(), theFrame) != sFrames.end();
++	if (!aWant && sEvery > 0 && theFrame % sEvery == 0 && (sMax <= 0 || sWritten < sMax))
++	{
++		aWant = true;
++		++sWritten;
++	}
++	if (!aWant)
++		return;
++
++	SDL_Surface *aSurface = SDL_RenderReadPixels(theRenderer, nullptr);
++	if (!aSurface)
++	{
++		std::fprintf(stderr, "[overhaul-capture] frame %d read failed: %s\n", theFrame, SDL_GetError());
++		return;
++	}
++	SDL_Surface *aRGB = SDL_ConvertSurface(aSurface, SDL_PIXELFORMAT_RGB24);
++	char aPath[512];
++	std::snprintf(aPath, sizeof(aPath), "%s/frame_%05d.bmp", sDir.c_str(), theFrame);
++	bool aOK = aRGB && SDL_SaveBMP(aRGB, aPath);
++	std::fprintf(stderr, "[overhaul-capture] frame %d -> %s %s\n", theFrame, aPath,
++		aOK ? "ok" : (aRGB ? SDL_GetError() : "convert failed"));
++	if (aRGB)
++		SDL_DestroySurface(aRGB);
++	SDL_DestroySurface(aSurface);
++}
++
+ 
+ SDL_FPoint TransformToPoint(float x, float y, const Matrix3 &m, float aTransX = 0, float aTransY = 0)
+ {
+@@ -105,10 +186,10 @@
  	if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight))
  		return;
  
@@ -25,7 +109,17 @@
  }
  
  int SDLInterface::Init(bool IsWindowed)
-@@ -303,7 +304,11 @@
+@@ -215,6 +296,9 @@
+ 	if (ImGui::GetDrawData() != nullptr)
+ 		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), mRenderer);
+ 
++	static int sOverhaulFrame = 0;
++	OverhaulMaybeCapture(mRenderer, ++sOverhaulFrame);
++
+ 	SDL_RenderPresent(mRenderer);
+ 
+ 	return !PopLib::gSDLInterfacePreDrawError;
+@@ -303,7 +387,11 @@
  
  void SDLInterface::MakeSimpleMessageBox(const char *theTitle, const char *theMessage, SDL_MessageBoxFlags flags)
  {
@@ -38,7 +132,7 @@
  }
  
  int SDLInterface::MakeResultMessageBox(SDL_MessageBoxData data)
-@@ -766,7 +771,7 @@
+@@ -766,7 +854,7 @@
  {
  	SDL_SetRenderTarget(mRenderer, mScreenTexture);
  
@@ -47,7 +141,7 @@
  
  	int indices[] = {0, 1, 2};
  
-@@ -795,7 +800,7 @@
+@@ -795,7 +883,7 @@
  	SDL_SetTextureAlphaMod(aTexture, theColor.GetAlpha());
  	SDL_SetTextureBlendMode(aTexture, ChooseBlendMode(theDrawMode));
  
@@ -56,7 +150,7 @@
  
  	int indices[] = {0, 1, 2};
  
-@@ -889,7 +894,7 @@
+@@ -889,7 +977,7 @@
  		uvs.push_back(v.u);
  		uvs.push_back(v.v);
  

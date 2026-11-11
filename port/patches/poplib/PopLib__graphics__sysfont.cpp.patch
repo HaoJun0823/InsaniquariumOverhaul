@@ -10,7 +10,7 @@
  
  using namespace PopLib;
  
-@@ -198,7 +199,12 @@
+@@ -198,12 +199,21 @@
  		TTF_RenderText_Blended(mTTFFont, theString.c_str(), 0, aColor);
  	if (!textSurface)
  	{
@@ -22,5 +22,24 @@
 +			return;
 +		mApp->mSDLInterface->MakeSimpleMessageBox("Failed to render text: ", aTtfError, SDL_MESSAGEBOX_ERROR);
  		return;
+ 	}
+ 
+ 	SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+-	SDL_FRect dstRect = {(float)theX, (float)theY - (float)mAscent, (float)textSurface->w, (float)textSurface->h};
++	// Overhaul: honour Graphics::Translate() like Graphics::DrawImage does.
++	const float aTransX = g->mTransX;
++	const float aTransY = g->mTransY;
++	SDL_FRect dstRect = {(float)theX + aTransX, (float)theY - (float)mAscent + aTransY,
++	                     (float)textSurface->w, (float)textSurface->h};
+ 	SDL_FRect srcRect = {0, 0, dstRect.w, dstRect.h};
+ 	SDL_DestroySurface(textSurface);
+ 
+@@ -215,7 +225,7 @@
+ 
+ 	if (mDrawShadow)
+ 	{
+-		SDL_FRect shadowRect = {(float)theX + 1.f, (float)theY - (float)mAscent + 1.f, dstRect.w, dstRect.h};
++		SDL_FRect shadowRect = {dstRect.x + 1.f, dstRect.y + 1.f, dstRect.w, dstRect.h};
+ 		mApp->mSDLInterface->BltTexture(textTexture, srcRect, shadowRect, Color(0, 0, 0), g->GetDrawMode());
  	}
  

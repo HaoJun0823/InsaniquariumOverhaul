@@ -1,0 +1,33 @@
+--- a/PopLib/common.cpp
++++ b/PopLib/common.cpp
+@@ -14,11 +14,28 @@
+ static PopLib::MTRand gMTRand;
+ namespace PopLib
+ {
++namespace
++{
++// Overhaul: OVERHAUL_USER_DATA_DIR overrides the user-data root so the
++// headless UI regression can start from a fresh, isolated profile.
++std::string OverhaulAppDataFolder()
++{
++	const char *aOverride = std::getenv("OVERHAUL_USER_DATA_DIR");
++	if (aOverride != nullptr && *aOverride != '\0')
++	{
++		std::string aPath(aOverride);
++		if (aPath.back() != '/' && aPath.back() != '\\')
++			aPath += '/';
++		return aPath;
++	}
+ #ifdef _WIN32
+-std::string gAppDataFolder = std::filesystem::path(std::getenv("LOCALAPPDATA")).string() + "/";
++	return std::filesystem::path(std::getenv("LOCALAPPDATA")).string() + "/";
+ #else
+-std::string gAppDataFolder = std::filesystem::path(std::getenv("HOME")).string() + "/.config/";
++	return std::filesystem::path(std::getenv("HOME")).string() + "/.config/";
+ #endif
++}
++}
++std::string gAppDataFolder = OverhaulAppDataFolder();
+ }
+ 
+ int PopLib::Rand()

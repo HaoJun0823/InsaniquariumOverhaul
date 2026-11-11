@@ -110,12 +110,13 @@ cd port/bin && Insaniquarium.exe
 | 工具链（CMake 4.3.1 + Ninja + MSVC 19.51） | ✅ 满足 poplib 3.26 要求 |
 | **嵌套依赖（13 个 gitlink）** | ✅ `init-deps.py --check` 全部 OK；`discordrpc` 404 由补丁的 `if(EXISTS)` 守卫绕过 |
 | **派生链路 `port.sh`** | ✅ 153 源文件 → 40 条 include 规则 → 150 文件重写 → 151 派生产物 |
-| **上游补丁集（不 fork）** | ✅ 6 个补丁文件干净应用、幂等验证通过 |
+| **上游补丁集（不 fork）** | ✅ 7 个补丁文件干净应用、幂等验证通过（含自动帧导出与坐标变换修复） |
 | **TTF 资源表** | ✅ 15 个字体 → `!sys:`，严格 XML 校验通过（339 元素） |
 | **资产铺设 + 资源校验** | ✅ 45M 资产 + TTF 表 + 字体 + `default.xml`；**328 个引用全部齐全** |
 | **CMake configure** | ✅ 生成 `build.ninja`，1565 条 build 边 |
 | **完整编译 + 链接** | ✅ **exit 0**，`port/bin/Insaniquarium.exe` 9.5 MB（仅少量无害 warning） |
 | **启动验证（headless，15 s）** | ✅ 资源加载成功、无崩溃、0 警告；exe 仅依赖系统 DLL + `bass.dll` |
+| **确定性 UI 回归（3 场景 × 7 帧）** | ✅ `python port/run-capture-test.py` 全绿；隔离 profile + manifest，逐帧可复现 |
 
 本轮修掉的上游/移植问题：官库 `alldemos` 目标不存在导致 configure 失败、
 嵌套子模块浅克隆漂移、PopCap XML 的裸属性与私有实体 `&cr;`/`&nbsp;`、
@@ -125,6 +126,47 @@ XML 归一化器漏写 `=`、TTF 空字符串触发模态错误框、启动时�
 **决策已定**：留官库 poplib + `port/patches/` 补丁集（不 fork）；本轮 UI 只做
 **L1 + TTF**；游戏资产来自用户零售版，版权资产与字体二进制均不入库。
 L2（宽屏锚点布局）/ L3（素材重绘）待排期，详见设计文档第 5 节。
+
+---
+
+## 确定性 UI 回归（不用桌面、不用按键）
+
+之前 headless 截图和真实桌面截图**不是同一个画面**，原因不是随机崩溃：
+poplib 把全部持久化状态放在 `%LOCALAPPDATA%`，而 `ShouldCheckForUpdate()`
+会读残留的 `InProgress` / `LastVerCheckQueryTime` 决定是否弹「Updates」询问框。
+于是「上一轮留下什么状态」决定了「这一轮截到什么图」——验证因此不可信。
+
+顺带查明的两个真实缺陷：
+
+1. **`SysFont::DrawString` 没有应用 `Graphics::Translate()`**。`WidgetManager`
+   绘制 widget 前会 translate 到 widget 自身坐标；`ImageFont` 走
+   `Graphics::DrawImage` 会遵守，`SysFont` 却把绝对矩形直接交给 SDL 渲染器，
+   结果对话框的框和按钮图片在中央、标题/正文/YES·NO 全被画到屏幕左上角。
+   这是「整个乱套」的根因，且影响**所有**对话框，不是只影响这一个弹窗。
+2. **失效的 PopCap 更新询问框**：其服务器早已下线，且 `InProgress: 1`
+   （进程被强杀残留）会在下次启动时把它唤起。现已默认关闭，仅保留
+   `OVERHAUL_UPDATE_DIALOG=legacy|force` 供回归测试复现。
+
+现在验证是确定性的：
+
+```bash
+python port/run-capture-test.py                 # default / force / legacy 三场景
+python port/run-capture-test.py --only force    # 只跑对话框渲染回归
+```
+
+脚本每次**重建一个隔离的全新 profile**（`OVERHAUL_USER_DATA_DIR`，只写在
+`build/ui-regression/` 下，绝不碰玩家真实数据），用 headless 帧导出拿画面，
+并把环境变量、`registry.json` 快照、每帧尺寸与 MD5 写进 `manifest.json`。
+
+| 场景 | 开关 | 期望画面 |
+|---|---|---|
+| `default` | 无 | 干净的 `CLICK HERE TO PLAY!` 标题界面，**无更新弹窗** |
+| `force` | `OVERHAUL_UPDATE_DIALOG=force` | 更新询问框显示，且标题/正文/YES·NO **都在框内** |
+| `legacy` | `OVERHAUL_UPDATE_DIALOG=legacy` | 复刻原 `ShouldCheckForUpdate()` 分支 |
+
+帧导出由 `sdlinterface.cpp` 补丁的 `OVERHAUL_CAPTURE_*` 提供，不设变量时零开销；
+`force` 场景专门守着 `SysFont` 坐标修复，避免以后换字体或改布局时又把
+所有对话框文字推回左上角。
 
 ---
 
