@@ -42,7 +42,7 @@ InsaniquariumOverhaul/
 ├── README.md             # 本文件
 ├── .gitignore
 ├── external/
-│   ├── winfish/  (submodule → HaoJun0823/WinFishCN, 含 fix #1–9, 只读)
+│   ├── winfish/  (submodule → Vindirect/WinFish, 含 fix #1–9, 只读)
 │   └── poplib/   (submodule → teampopwork/poplib, 跨平台框架, 只读)
 └── port/                 # ← 唯一会改的地方
     ├── CMakeLists.txt
