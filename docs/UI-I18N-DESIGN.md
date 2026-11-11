@@ -109,6 +109,13 @@ L2/L3 都只改 `port/` 派生层，符合"反编译永不修改"的架构契约
    `port/build-windows.bat` 已显式把 SDK rc/mt 加入 PATH 并传给 CMake，**需在普通终端执行验证**。
 4. **游戏资产缺失**（`data/properties/images/music/sounds/fishsongs`）。属 PopCap 版权，
    需从你自己的零售版拷贝：`bash port/copy-assets.sh <游戏目录>`。
+5. **嵌套子模块浅克隆版本漂移**：`--depth 1` 会把 SDL/SDL_ttf/curl/ogg/openal/tinyxml2/zlib
+   停在各仓库最新 HEAD，而非官库 gitlink 记录的 commit（实测 7 个不一致），可能编不过。
+   首次克隆建议直接 `git submodule update --init --recursive`（不加 `--depth`）；
+   或对子模块按 gitlink 逐个 `git fetch origin <sha> && git checkout <sha>`。
+
+> 注：以上 1/2/5 都源于**官库 poplib 上游已归档、依赖失修**。切到维护中的
+> `SaMeiers/PopLib` 或以补丁集修复，是同一个决策的两面，见下节。
 
 ---
 
