@@ -27,6 +27,16 @@ Usage
     python port/run-capture-test.py --only default
     python port/run-capture-test.py --only force
     python port/run-capture-test.py --seconds 25
+    python port/run-capture-test.py --driver desktop --only default
+
+`--driver headless` (default) uses SDL's dummy video driver and the software
+renderer: fast, no window, proves logic and 640x480 layout.
+
+`--driver desktop` leaves SDL's real video/render drivers alone and opens a
+real window. Use it for rendering, windowing, input, or audio changes: the
+dummy path cannot reproduce driver-specific failures. An early exit in this
+mode is a test failure, and the manifest records the exit code, the last
+exported frame and whether crash.txt exists.
 
 The game is expected to still be running when the timeout fires; that is a
 successful run, not a crash. A real crash is signalled by an early non-zero
@@ -79,8 +89,9 @@ def bmp_info(path):
     }
 
 
-def run_scenario(name, extra_env, seconds):
-    work = OUT / name
+def run_scenario(name, extra_env, seconds, driver):
+    label = name if driver == "headless" else f"{name}-{driver}"
+    work = OUT / label
     profile = work / "profile"
     captures = work / "frames"
 
@@ -92,9 +103,13 @@ def run_scenario(name, extra_env, seconds):
     captures.mkdir(parents=True)
 
     env = os.environ.copy()
+    # Never inherit a driver choice from the caller: the mode is explicit.
+    env.pop("SDL_VIDEODRIVER", None)
+    env.pop("SDL_RENDER_DRIVER", None)
+    if driver == "headless":
+        env["SDL_VIDEODRIVER"] = "dummy"
+        env["SDL_RENDER_DRIVER"] = "software"
     env.update({
-        "SDL_VIDEODRIVER": "dummy",
-        "SDL_RENDER_DRIVER": "software",
         "OVERHAUL_USER_DATA_DIR": profile.as_posix(),
         "OVERHAUL_CAPTURE_FRAMES": FRAMES,
         "OVERHAUL_CAPTURE_EVERY": "60",
@@ -134,6 +149,8 @@ def run_scenario(name, extra_env, seconds):
 
     manifest = {
         "scenario": name,
+        "label": label,
+        "driver": driver,
         "exe": str(EXE),
         "exe_md5": hashlib.md5(EXE.read_bytes()).hexdigest() if EXE.exists() else None,
         "profile": str(profile),
@@ -148,6 +165,7 @@ def run_scenario(name, extra_env, seconds):
         "registry_path": str(registry_path) if registry_path else None,
         "registry": registry,
         "crash_txt": str(crash) if crash.exists() else None,
+        "last_frame": frames[-1]["name"] if frames else None,
         "frames": frames,
         "stderr_tail": err_text.splitlines()[-25:],
         "stdout_tail": out_text.splitlines()[-10:],
@@ -168,9 +186,10 @@ def run_scenario(name, extra_env, seconds):
         elif f["bytes"] < 100_000 or f["distinct_sample_bytes"] < 8:
             problems.append(f"{f['name']}: blank or uniform frame")
 
-    print(f"[{name}] frames={len(frames)} "
+    print(f"[{label}] driver={driver} frames={len(frames)} "
           f"registry_keys={len(registry) if isinstance(registry, dict) else 0} "
-          f"timeout_ok={timed_out} problems={len(problems)}")
+          f"timeout_ok={timed_out} returncode={proc.returncode} "
+          f"problems={len(problems)}")
     for p in problems:
         print(f"    ! {p}")
     print(f"    manifest: {work / 'manifest.json'}")
@@ -181,6 +200,8 @@ def run_scenario(name, extra_env, seconds):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=list(SCENARIOS) + ["all"], default="all")
+    ap.add_argument("--driver", choices=["headless", "desktop"], default="headless",
+                    help="headless=dummy+software; desktop=real SDL drivers")
     ap.add_argument("--seconds", type=int, default=20,
                     help="let the game run this long before terminating it")
     args = ap.parse_args()
@@ -193,7 +214,7 @@ def main():
     names = list(SCENARIOS) if args.only == "all" else [args.only]
     ok = True
     for name in names:
-        ok &= run_scenario(name, SCENARIOS[name], args.seconds)
+        ok &= run_scenario(name, SCENARIOS[name], args.seconds, args.driver)
 
     print("\nRESULT:", "OK" if ok else "FAILED")
     print("All captures used a freshly created, isolated profile; see each "

@@ -1,5 +1,10 @@
 # InsaniquariumOverhaul
 
+> **Development contract:** [AGENTS.md](AGENTS.md) — English. AI agents implement; humans review.
+> **Documentation language:** all new documents are written in English. This README and
+> `docs/UI-I18N-DESIGN.md` are legacy Chinese documents, migrated when substantially edited.
+> **Open defects:** see [AGENTS.md §13](AGENTS.md#13-known-issues-2026-11-11).
+
 Insaniquarium Deluxe 的**大修工程**：在反编译源码与社区跨平台框架之上，实现四大支柱——
 
 1. **跨平台（Cross-platform）** — Windows / Linux / macOS 原生运行
