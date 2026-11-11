@@ -1,0 +1,26 @@
+--- a/PopLib/graphics/sysfont.cpp
++++ b/PopLib/graphics/sysfont.cpp
+@@ -7,7 +7,8 @@
+ #include "sdlinterface.hpp"
+ #include "widget/widgetmanager.hpp"
+ 
+-#include <stdlib.h>
++#include <stdlib.h>
++#include <string.h>
+ 
+ using namespace PopLib;
+ 
+@@ -198,7 +199,12 @@
+ 		TTF_RenderText_Blended(mTTFFont, theString.c_str(), 0, aColor);
+ 	if (!textSurface)
+ 	{
+-		mApp->mSDLInterface->MakeSimpleMessageBox("Failed to render text: ", SDL_GetError(), SDL_MESSAGEBOX_ERROR);
++		// SDL_ttf reports 'Text has zero width' for empty / zero-width
++		// strings. That is a normal no-op, not a fatal error dialog.
++		const char *aTtfError = SDL_GetError();
++		if (aTtfError != nullptr && strstr(aTtfError, "zero width") != nullptr)
++			return;
++		mApp->mSDLInterface->MakeSimpleMessageBox("Failed to render text: ", aTtfError, SDL_MESSAGEBOX_ERROR);
+ 		return;
+ 	}
+ 

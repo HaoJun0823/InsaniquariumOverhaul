@@ -11,3 +11,12 @@
  add_subdirectory(external/tinyxml2 EXCLUDE_FROM_ALL)
  
  
+@@ -97,7 +99,7 @@
+     add_custom_target(alldemos ALL DEPENDS ${demo_deps})
+ endif()
+ 
+-if(NOT (DEFINED ENV{GITHUB_ACTIONS} AND "$ENV{GITHUB_ACTIONS}" STREQUAL "true"))
++if(TARGET alldemos AND NOT (DEFINED ENV{GITHUB_ACTIONS} AND "$ENV{GITHUB_ACTIONS}" STREQUAL "true"))
+     add_custom_command(TARGET alldemos POST_BUILD
+         COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --config $<CONFIG>
+     )

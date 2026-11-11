@@ -65,6 +65,27 @@ endif()
 
 target_link_libraries(WinFish PRIVATE PopLib)
 
+# PopLib links BASS through bass.lib, which is an IMPORT library: bass.dll must
+# sit next to the executable at runtime. Everything else (SDL3, OpenAL, curl,
+# FreeType, harfbuzz, zlib) is built statically by PopLib's CMake, so BASS is
+# the only DLL we need to ship. Copy it on every build.
+if(WIN32)
+	if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+		set(BASS_ARCH "x64")
+	else()
+		set(BASS_ARCH "x86")
+	endif()
+	set(BASS_DLL "${CMAKE_CURRENT_LIST_DIR}/../external/poplib/external/bass/${BASS_ARCH}/bass.dll")
+	if(EXISTS "${BASS_DLL}")
+		add_custom_command(TARGET WinFish POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+				"${BASS_DLL}" "$<TARGET_FILE_DIR:WinFish>"
+			COMMENT "Copying bass.dll next to Insaniquarium.exe")
+	else()
+		message(WARNING "bass.dll not found at ${BASS_DLL}; the game will not start without it")
+	endif()
+endif()
+
 set_target_properties(WinFish PROPERTIES
 	RUNTIME_OUTPUT_DIRECTORY         "${CMAKE_CURRENT_LIST_DIR}/bin"
 	RUNTIME_OUTPUT_DIRECTORY_DEBUG   "${CMAKE_CURRENT_LIST_DIR}/bin"

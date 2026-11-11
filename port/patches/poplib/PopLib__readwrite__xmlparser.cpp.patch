@@ -7,10 +7,34 @@
  #include "debug/debug.hpp"
  #include "paklib/pakinterface.hpp"
  
-@@ -32,6 +33,67 @@
+@@ -32,6 +33,94 @@
      mSectionStack.clear();
  }
  
++// PopCap's properties/*.xml use two private entities tinyxml2 does not know:
++//   &cr;   = carriage return (line break inside a string)
++//   &nbsp; = non-breaking space
++// tinyxml2 only decodes quot/amp/apos/lt/gt plus numeric references, so turn
++// them into equivalent numeric character references before parsing.
++static std::string NormalisePopCapEntities(const std::string &s)
++{
++	const std::string pairs[][2] = {
++		{"&cr;", "&#13;"},
++		{"&nbsp;", "&#160;"},
++	};
++	std::string out = s;
++	for (const auto &p : pairs)
++	{
++		size_t pos = 0;
++		while ((pos = out.find(p[0], pos)) != std::string::npos)
++		{
++			out.replace(pos, p[0].size(), p[1]);
++			pos += p[1].size();
++		}
++	}
++	return out;
++}
++
 +// PopCap's resources.xml is not valid XML: attributes such as cols=3 are
 +// unquoted. The original hand-written parser accepted them; tinyxml2 does not.
 +// Rewrite only inside tags, copying comments/CDATA/text verbatim.
@@ -47,7 +71,10 @@
 +			while (look < n && space(s[look])) ++look;
 +			if (look < n && s[look] == '=')
 +			{
-+				out.append(s, i, look - i);
++				// keep the spaces AND the '=' itself; dropping the '=' here
++				// turns id="X" into id"X" and tinyxml2 reports
++				// XML_ERROR_PARSING_ATTRIBUTE on every ordinary tag.
++				out.append(s, i, look - i + 1);
 +				i = look + 1;
 +				while (i < n && space(s[i])) out += s[i++];
 +				if (i < n && (s[i] == '"' || s[i] == '\''))
@@ -75,10 +102,11 @@
  bool XMLParser::AddAttribute(XMLElement *theElement, const PopString &theAttributeKey, const PopString &theAttributeValue)
  {
      if (theAttributeValue == "SUNFLOWER_HEAD_SING1")
-@@ -90,6 +152,7 @@
+@@ -90,6 +179,8 @@
      else
          aNewWrappedBuffer = input;
  
++    aNewWrappedBuffer = NormalisePopCapEntities(aNewWrappedBuffer);
 +    aNewWrappedBuffer = QuoteBareAttributeValues(aNewWrappedBuffer);
      const char* data = aNewWrappedBuffer.c_str();
      size_t size = aNewWrappedBuffer.size();

@@ -1,6 +1,7 @@
 # UI 现代化与多语言（TTF）设计方案
 
-> 状态（2026-11-11）：**L1 + TTF + 补丁集已实施并验证**；L2/L3 仍为待审批方案。
+> 状态（2026-11-11）：**L1 + TTF + 补丁集已实施；Windows x64 完整编译、链接、启动均已验证通过**；
+> L2/L3 仍为待排期方案。
 > 决策记录：留官库 poplib + `port/patches/` 补丁集（不 fork）；本轮 UI 只做
 > **L1 + TTF**；游戏资产来自用户零售版 `E:\SteamLibrary\...\Insaniquarium Deluxe`。
 > 目标：放弃原版 4:3 位图 UI、用 TTF 替换烘焙字体、支撑跨平台 + 多语言。
@@ -9,30 +10,36 @@
 
 | 交付 | 位置 | 验证结果 |
 |---|---|---|
-| 上游 bug 补丁集（不 fork） | `port/patches/poplib/*.patch`（5 个） | `--check` 干净、apply 成功、二次运行识别"已应用"（幂等） |
+| 上游 bug 补丁集（不 fork） | `port/patches/poplib/*.patch`（6 个文件 / 8 处修复） | `--check` 干净、apply 成功、二次运行识别"已应用"（幂等） |
 | 补丁生成 / 应用工具 | `port/make-patches.py`、`port/apply-patches.py` | 支持 `--check` / `--revert` |
+| 嵌套依赖修复 | `port/init-deps.py` | 13 个 gitlink 全部 checkout 到固定 commit |
 | **L1 逻辑呈现**：设计分辨率 640×480 + SDL letterbox 缩放 | sdlinterface 补丁 | 补丁已应用 |
-| 颜色值域、随机数、kerning、无引号 XML、discordrpc 404 | sdlinterface/mtrand/imagefont/xmlparser/CMake 补丁 | 补丁已应用 |
+| 颜色值域、随机数、kerning、无引号 XML、`&cr;`/`&nbsp;`、discordrpc 404、`alldemos` | 各补丁 | 补丁已应用 |
+| TTF 空字符串不再弹错误框；启动期致命错误写 stderr | sysfont / sdlinterface 补丁 | headless 运行 0 警告 |
 | **TTF 资源表**（15 个 `<Font>` → `!sys:fonts/ui.ttf`） | `port/assets/properties/resources.xml` | 严格 XML 校验通过（339 元素） |
 | 资源表生成器 | `port/make-resources.py` | 15 个重写 + 5 处无引号值 + 6 处无值属性规范化 |
 | 字体准备 / 说明 | `port/prepare-font.py`、`port/assets/fonts/README.md` | 本机字体已铺好（不入库） |
-| 资产铺设 + 覆盖层 | `port/copy-assets.sh` | 20M 资产 + TTF 表 + 字体全部就位 |
+| 资产铺设 + 覆盖层 + `default.xml` + `bass.dll` | `port/copy-assets.sh`、`port/CMakeLists.txt` | 45M 资产全部就位 |
 | 资源校验（含 `!sys:` 支持、大小写修正） | `port/verify-assets.py` | **328 个引用全部齐全、退出码 0** |
+| **完整编译 / 链接 / 启动** | `port/build-windows.bat` | **exit 0；`Insaniquarium.exe` 9.5 MB；headless 跑满 15 s 无崩溃** |
 
 > 补丁作用于 `external/poplib` 的**工作树**，父仓库 gitlink 仍是
 > `adf1b914`（仅显示 `-dirty`），不进 git 历史。上游更新后重跑
 > `make-patches.py` 重新生成即可。
 
-### 仍未验证：完整编译
-CMake try_compile 受本机沙箱限制（`reg.exe` 黑名单 / `rc.exe`-`mt.exe` 路径）。
-`port/build-windows.bat` 已显式补上 SDK rc/mt 并接入 `apply-patches.py`，
-**需要在普通终端跑一次**：
+### 完整编译与启动：已验证（2026-11-11）
 
-```bash
-python port/apply-patches.py
-port\build-windows.bat
-bash port/copy-assets.sh "E:/SteamLibrary/steamapps/common/Insaniquarium Deluxe"
-```
+不绕过安全策略：沙箱把 `reg.exe` 列入程序黑名单、`vcvarsall.bat` 会查询注册表，
+因此改用**手工设置 `INCLUDE` / `LIB` / `PATH`** 的标准无注册表方式驱动 MSVC + Ninja
+（全程不运行被禁用的程序）。结果：
+
+- CMake configure：`build.ninja`，1565 条 build 边；
+- `cmake --build --parallel`：**exit 0**，910/911 步，`port/bin/Insaniquarium.exe` 9.5 MB；
+- `dumpbin /dependents`：仅系统 DLL + VC runtime + `bass.dll`（其余依赖均静态链接）；
+- headless（`SDL_VIDEODRIVER=dummy`）启动 15 s：`Resource Loading Time: 905`，**0 警告、0 崩溃**。
+
+`port/build-windows.bat` 已把这些修复固化，普通终端直接运行即可；受限环境用
+`set OVERHAUL_NO_VCVARS=1`。
 
 ---
 
@@ -63,7 +70,7 @@ bash port/copy-assets.sh "E:/SteamLibrary/steamapps/common/Insaniquarium Deluxe"
 ## 2. 字体：从烘焙位图到 TTF（低风险，可先做）
 
 ### 现状（已核实）
-- 原版 `resources.xml` 有 14 个烘焙字体：`<Font id="JUNGLEFEVER10OUTLINE" path="JungleFever10outline.txt" />`，
+- 原版 `resources.xml` 有 15 个烘焙字体：`<Font id="JUNGLEFEVER10OUTLINE" path="JungleFever10outline.txt" />`，
   每个 `.txt` 描述一张字形图集；`Res.cpp` 用 `GetFontThrow("FONT_XXX")` 取出。
 - `ImageFont` 是 `CharData[256]` / `uchar mCharMap[256]`——**按字节寻址，最多 256 字形，天生装不下 CJK**。
 - 所以 TTF 不是"优化"，是**多语言的必要前提**。
@@ -85,7 +92,7 @@ bash port/copy-assets.sh "E:/SteamLibrary/steamapps/common/Insaniquarium Deluxe"
 `size` 必填，`!sys:` 前缀触发 `SysFont` 路径。**游戏逻辑一行都不用改**——`GetFontThrow` 拿到的还是 `Font*`。
 
 ### 落地清单（全在 `port/` 层，反编译零改动）
-1. `port/assets/properties/resources.xml` — 从原版派生，把 14 个 `<Font>` 换成 `!sys:` 声明。
+1. `port/assets/properties/resources.xml` — 从原版派生，把 15 个 `<Font>` 换成 `!sys:` 声明。
    （这是资源覆盖，不改 `external/winfish`。）
 2. `port/assets/fonts/` — 放可再分发的中文字体（推荐 **Noto Sans SC / 思源黑体，SIL OFL 1.1**，
    允许随 AGPL 程序分发；字体自身许可证需在 `THIRD-PARTY-NOTICES.md` 登记）。
@@ -117,50 +124,48 @@ L2/L3 都只改 `port/` 派生层，符合"反编译永不修改"的架构契约
 
 ---
 
-## 4. 构建现状与阻塞（实测 2026-11-11）
+## 4. 构建现状：已全部解决（实测 2026-11-11）
 
 已验证 ✅
 - 工具链：VS 18/Community 自带 **CMake 4.3.1 + Ninja + MSVC 19.51**，满足 poplib 的 3.26 要求。
-- 嵌套子模块：`git submodule update --init --recursive --depth 1` 拉到 9/10。
-- **派生链路跑通**：`bash port/port.sh` → 153 源文件、40 条 include 规则、150 文件重写、151 个派生产物，
-  `Board.cpp` 的 include 已全部变成 `PopLib/...`。
+- **派生链路跑通**：`bash port/port.sh` → 153 源文件、40 条 include 规则、150 文件重写、151 个派生产物。
+- **完整编译 + 链接 + headless 启动**全部通过（见前文）。
 
-待解决 ⚠️
-1. **`external/discordrpc` 上游 404**（`EclipseMenu/discord-presence` 仓库已不存在）。
-   构建时 `FEATURE_DISCORD_RPC=OFF` 可绕过功能，但官库 `CMakeLists.txt` 无条件
-   `add_subdirectory(external/discordrpc)`，空目录会让 configure 失败 → 需 patch。
-2. **官库 poplib 上游已归档且有未修 bug**。`SaMeiers/PopLib` 的 `PORT-CHANGES.md` 列出若干会让游戏跑不起来的问题：
-   - `xmlparser` 不接受 `resources.xml` 里的**无引号属性值** → 资源加载直接失败；
-   - `MTRand` 丢了 `& 0x7FFFFFFF` → 一半随机数为负，鱼每帧掉钱；
-   - `char` 在 ARM 上无符号 → kerning `-2` 读成 `254`，文字宽度全错；
-   - `SDL_FColor` 值域 0–1 却按 0–255 传 → 几何图形全白；
-   - 还有 vsync / render target / 逻辑呈现缩放等渲染修复（**L1 正好需要它**）。
-3. **完整编译未验证**：CMake configure 时 MSVC 识别成功，但 try_compile 因 `rc.exe`/`mt.exe`
-   未进 PATH 失败，且沙箱把 `vcvarsall` 内部调用的 `reg.exe` 列入黑名单。
-   `port/build-windows.bat` 已显式把 SDK rc/mt 加入 PATH 并传给 CMake，**需在普通终端执行验证**。
-4. **游戏资产缺失**（`data/properties/images/music/sounds/fishsongs`）。属 PopCap 版权，
-   需从你自己的零售版拷贝：`bash port/copy-assets.sh <游戏目录>`。
-5. **嵌套子模块浅克隆版本漂移**：`--depth 1` 会把 SDL/SDL_ttf/curl/ogg/openal/tinyxml2/zlib
-   停在各仓库最新 HEAD，而非官库 gitlink 记录的 commit（实测 7 个不一致），可能编不过。
-   首次克隆建议直接 `git submodule update --init --recursive`（不加 `--depth`）；
-   或对子模块按 gitlink 逐个 `git fetch origin <sha> && git checkout <sha>`。
+本轮修掉的问题（都已固化进补丁集 / 脚本，不再需要人工干预）：
 
-> 注：以上 1/2/5 都源于**官库 poplib 上游已归档、依赖失修**。切到维护中的
-> `SaMeiers/PopLib` 或以补丁集修复，是同一个决策的两面，见下节。
+| 问题 | 修法 |
+|---|---|
+| `external/discordrpc` 上游 404，官库无条件 `add_subdirectory` | `CMakeLists.txt.patch` 用 `if(EXISTS ...)` 守卫 |
+| 官库 `add_custom_command(TARGET alldemos ...)` 无条件执行，但 `BUILD_EXAMPLES/TOOLS=OFF` 时该 target 不存在 | 同补丁改为 `if(TARGET alldemos AND ...)` |
+| 嵌套子模块浅克隆：**工作树全空**、HEAD 停在分支 tip 而非 gitlink | `port/init-deps.py` 按 gitlink SHA `fetch --depth 1` + `checkout --detach`（9 个 poplib + 4 个 SDL_ttf，共 13 个） |
+| SDL_ttf 的 freetype / harfbuzz / plutosvg / plutovg 未初始化 | 同上 |
+| `resources.xml` 的裸属性值 `cols=3`、`default.xml` 的私有实体 `&cr;` / `&nbsp;` | `xmlparser.cpp` 补丁：解析前归一化 |
+| 归一化器漏写 `=`，把 `id="X"` 变成 `id"X"`（`XML_ERROR_PARSING_ATTRIBUTE`） | 同一补丁修正 |
+| `MTRand` 丢掩码 / ARM 上 `char` 无符号 / `SDL_FColor` 值域 / L1 逻辑呈现 | 对应补丁 |
+| TTF 空字符串触发模态错误框，每帧刷屏 | `sysfont.cpp` 补丁：zero-width 静默跳过 |
+| 启动期致命错误在窗口创建前弹框崩溃 | `sdlinterface.cpp` 补丁：先写 stderr，有窗口才弹框 |
+| `properties/default.xml` 被旧中文补丁移走，游戏启动即失败 | `copy-assets.sh` 搜索多个已知位置 |
+| `bass.dll` 未随 exe 部署（BASS 是 import lib） | `port/CMakeLists.txt` POST_BUILD 拷贝 |
+| CMake `-D` 路径用反斜杠被当成转义符 | `build-windows.bat` 统一用正斜杠 |
+| 沙箱 `reg.exe` 黑名单 | `OVERHAUL_NO_VCVARS=1` 手工设置 MSVC 环境，不查注册表 |
+
+> 这些大多源于**官库 poplib 上游已归档、依赖失修**。用补丁集而非 fork 修复，
+> 是第 5 节决策的直接结果。
 
 ---
 
 ## 5. 决策记录（已拍板，2026-11-11）
 
-1. **poplib 基线 = 留官库 + `port/patches/` 补丁集**（不 fork）。已落地 5 个最小补丁，
+1. **poplib 基线 = 留官库 + `port/patches/` 补丁集**（不 fork）。已落地 6 个补丁文件，
    只取桌面相关的通用修复，不夹带 Android/PortMaster 掌机代码。
-2. **UI 范围 = 本轮 L1 + TTF 先行**。L2（锚点布局 / 16:9 自适应）、L3（素材重绘）
-   留到 Windows spike 验证后再排期。
+2. **UI 范围 = 本轮 L1 + TTF 先行**。Windows spike 已验证通过；L2（锚点布局 / 16:9 自适应）、
+   L3（素材重绘）留待后续排期。
 3. **游戏资产**来自用户零售版，路径已写入 `copy-assets.sh` 调用示例；
    版权资产不入库，字体二进制也不入库（`ui.ttf` 已 gitignore）。
 
 ### 后续待办（未做）
-- 普通终端跑通 Windows SDL3 spike（唯一未验证环节）；
+- 在**真实桌面**双击运行、肉眼确认 TTF 中文渲染与 L1 letterbox 观感
+  （headless 验证只能证明不崩，不能证明画面正确）；
 - 换用 OFL 中文 TTF（发布时），当前本机验证用的是系统黑体（不可再分发）；
 - `OutlineSysFont` 包装类，补回原版 `*_OUTLINE` 描边观感；
 - `port/i18n/` 字符串表：把 ~3366 个字面量抽成 `TR("key")`，

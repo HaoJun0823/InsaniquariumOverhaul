@@ -28,6 +28,12 @@ EDITS = {
          "if(EXISTS ${POPLIB_ROOT_DIR}/external/discordrpc/CMakeLists.txt)\n"
          "\tadd_subdirectory(external/discordrpc EXCLUDE_FROM_ALL)\n"
          "\tendif()"),
+        # `alldemos` is only created when BUILD_EXAMPLES or BUILD_TOOLS is ON,
+        # but this POST_BUILD command was unconditional. We build the library
+        # only (both OFF), so configure failed with
+        # "No TARGET 'alldemos' has been created in this directory".
+        ('if(NOT (DEFINED ENV{GITHUB_ACTIONS} AND "$ENV{GITHUB_ACTIONS}" STREQUAL "true"))',
+         'if(TARGET alldemos AND NOT (DEFINED ENV{GITHUB_ACTIONS} AND "$ENV{GITHUB_ACTIONS}" STREQUAL "true"))'),
     ],
     "PopLib/math/mtrand.hpp": [
         # restore the mask SexyAppFramework had; without it ~half of Rand()
@@ -55,6 +61,32 @@ EDITS = {
          "SDL_SetRenderLogicalPresentation(mRenderer, mWidth, mHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)"),
         ("mPresentationRect = Rect(0, 0, windowWidth, windowHeight);",
          "mPresentationRect = Rect(0, 0, mWidth, mHeight);"),
+        # A fatal error during AppBase::Init() fires before the SDL window
+        # exists (mWindow == nullptr). SDL's message-box backend is not usable
+        # that early and crashes headlessly before showing any text at all.
+        # Always log the message, then only use SDL once a window exists.
+        ("#include \"imgui/imguimanager.hpp\"",
+         "#include \"imgui/imguimanager.hpp\"\n#include <stdio.h>"),
+        ("\tSDL_ShowSimpleMessageBox(flags, theTitle, theMessage, mWindow);",
+         "\t// AppBase::Init() runs before any window exists; log so headless/CI\n"
+         "\t// runs can diagnose, and only open SDL's dialog once we can.\n"
+         "\tfprintf(stderr, \"[%s] %s\\n\", theTitle, theMessage);\n"
+         "\tif (mWindow != nullptr)\n"
+         "\t\tSDL_ShowSimpleMessageBox(flags, theTitle, theMessage, mWindow);"),
+    ],
+    "PopLib/graphics/sysfont.cpp": [
+        # SDL_ttf returns nullptr ("Text has zero width") for an empty string or
+        # a string made only of zero-width glyphs. The game draws many empty
+        # labels/tooltips every frame; poplib treated each one as a FATAL error
+        # and opened a modal message box. Treat zero-width as an empty draw.
+        ("#include <stdlib.h>", "#include <stdlib.h>\n#include <string.h>"),
+        ("\t\tmApp->mSDLInterface->MakeSimpleMessageBox(\"Failed to render text: \", SDL_GetError(), SDL_MESSAGEBOX_ERROR);",
+         "\t\t// SDL_ttf reports 'Text has zero width' for empty / zero-width\n"
+         "\t\t// strings. That is a normal no-op, not a fatal error dialog.\n"
+         "\t\tconst char *aTtfError = SDL_GetError();\n"
+         "\t\tif (aTtfError != nullptr && strstr(aTtfError, \"zero width\") != nullptr)\n"
+         "\t\t\treturn;\n"
+         "\t\tmApp->mSDLInterface->MakeSimpleMessageBox(\"Failed to render text: \", aTtfError, SDL_MESSAGEBOX_ERROR);"),
     ],
     "PopLib/readwrite/xmlparser.cpp": [
         # resources.xml contains `cols=3` (unquoted). tinyxml2 rejects it,
@@ -62,13 +94,40 @@ EDITS = {
         # Anchors avoid line endings: the file is CRLF, so match without \n.
         ("#include \"xmlparser.hpp\"",
          "#include \"xmlparser.hpp\"\n#include <string>"),
+        # Two normalisations needed before tinyxml2 can read PopCap XML:
+        # private entities (&cr; / &nbsp;) and bare attribute values (cols=3).
         ("    const char* data = aNewWrappedBuffer.c_str();",
+         "    aNewWrappedBuffer = NormalisePopCapEntities(aNewWrappedBuffer);\n"
          "    aNewWrappedBuffer = QuoteBareAttributeValues(aNewWrappedBuffer);\n"
          "    const char* data = aNewWrappedBuffer.c_str();"),
     ],
 }
 
 HELPER = r'''
+// PopCap's properties/*.xml use two private entities tinyxml2 does not know:
+//   &cr;   = carriage return (line break inside a string)
+//   &nbsp; = non-breaking space
+// tinyxml2 only decodes quot/amp/apos/lt/gt plus numeric references, so turn
+// them into equivalent numeric character references before parsing.
+static std::string NormalisePopCapEntities(const std::string &s)
+{
+	const std::string pairs[][2] = {
+		{"&cr;", "&#13;"},
+		{"&nbsp;", "&#160;"},
+	};
+	std::string out = s;
+	for (const auto &p : pairs)
+	{
+		size_t pos = 0;
+		while ((pos = out.find(p[0], pos)) != std::string::npos)
+		{
+			out.replace(pos, p[0].size(), p[1]);
+			pos += p[1].size();
+		}
+	}
+	return out;
+}
+
 // PopCap's resources.xml is not valid XML: attributes such as cols=3 are
 // unquoted. The original hand-written parser accepted them; tinyxml2 does not.
 // Rewrite only inside tags, copying comments/CDATA/text verbatim.
@@ -105,7 +164,10 @@ static std::string QuoteBareAttributeValues(const std::string &s)
 			while (look < n && space(s[look])) ++look;
 			if (look < n && s[look] == '=')
 			{
-				out.append(s, i, look - i);
+				// keep the spaces AND the '=' itself; dropping the '=' here
+				// turns id="X" into id"X" and tinyxml2 reports
+				// XML_ERROR_PARSING_ATTRIBUTE on every ordinary tag.
+				out.append(s, i, look - i + 1);
 				i = look + 1;
 				while (i < n && space(s[i])) out += s[i++];
 				if (i < n && (s[i] == '"' || s[i] == '\''))

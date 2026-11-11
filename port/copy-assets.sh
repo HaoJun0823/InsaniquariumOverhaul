@@ -21,6 +21,30 @@ for d in data images music properties sounds fishsongs; do
   fi
 done
 
+# AppBase::LoadProperties() requires properties/default.xml (the string table).
+# Clean installs keep it in properties/ and the loop above already copied it.
+# Modded installs (e.g. an old Chinese patch) often move it into a subfolder,
+# so search the known locations before giving up. Without it the game pops a
+# fatal error during Init() and never reaches the menu.
+if [ ! -f "$DST/properties/default.xml" ]; then
+  for cand in \
+    "$SRC/properties/default.xml" \
+    "$SRC/old_cn_patch/patch_cn/properties/default.xml" \
+    "$SRC/mod/data/l10n_source/default.xml" \
+    "$SRC/chs/properties/default.xml"
+  do
+    if [ -f "$cand" ]; then
+      mkdir -p "$DST/properties"
+      cp "$cand" "$DST/properties/default.xml" \
+        && echo "  properties/default.xml (from ${cand#"$SRC"/})"
+      break
+    fi
+  done
+fi
+if [ ! -f "$DST/properties/default.xml" ]; then
+  echo "  WARNING: properties/default.xml not found - the game will fail at startup"
+fi
+
 # --- our overlays (kept in port/assets/, checked into git) -----------------
 echo
 echo "applying port/ overlays..."
