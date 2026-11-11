@@ -1,7 +1,38 @@
 # UI 现代化与多语言（TTF）设计方案
 
-> 状态：**待审批的方案**，不是已实施代码。
+> 状态（2026-11-11）：**L1 + TTF + 补丁集已实施并验证**；L2/L3 仍为待审批方案。
+> 决策记录：留官库 poplib + `port/patches/` 补丁集（不 fork）；本轮 UI 只做
+> **L1 + TTF**；游戏资产来自用户零售版 `E:\SteamLibrary\...\Insaniquarium Deluxe`。
 > 目标：放弃原版 4:3 位图 UI、用 TTF 替换烘焙字体、支撑跨平台 + 多语言。
+
+## 已实施（本轮，全部经过验证）
+
+| 交付 | 位置 | 验证结果 |
+|---|---|---|
+| 上游 bug 补丁集（不 fork） | `port/patches/poplib/*.patch`（5 个） | `--check` 干净、apply 成功、二次运行识别"已应用"（幂等） |
+| 补丁生成 / 应用工具 | `port/make-patches.py`、`port/apply-patches.py` | 支持 `--check` / `--revert` |
+| **L1 逻辑呈现**：设计分辨率 640×480 + SDL letterbox 缩放 | sdlinterface 补丁 | 补丁已应用 |
+| 颜色值域、随机数、kerning、无引号 XML、discordrpc 404 | sdlinterface/mtrand/imagefont/xmlparser/CMake 补丁 | 补丁已应用 |
+| **TTF 资源表**（15 个 `<Font>` → `!sys:fonts/ui.ttf`） | `port/assets/properties/resources.xml` | 严格 XML 校验通过（339 元素） |
+| 资源表生成器 | `port/make-resources.py` | 15 个重写 + 5 处无引号值 + 6 处无值属性规范化 |
+| 字体准备 / 说明 | `port/prepare-font.py`、`port/assets/fonts/README.md` | 本机字体已铺好（不入库） |
+| 资产铺设 + 覆盖层 | `port/copy-assets.sh` | 20M 资产 + TTF 表 + 字体全部就位 |
+| 资源校验（含 `!sys:` 支持、大小写修正） | `port/verify-assets.py` | **328 个引用全部齐全、退出码 0** |
+
+> 补丁作用于 `external/poplib` 的**工作树**，父仓库 gitlink 仍是
+> `adf1b914`（仅显示 `-dirty`），不进 git 历史。上游更新后重跑
+> `make-patches.py` 重新生成即可。
+
+### 仍未验证：完整编译
+CMake try_compile 受本机沙箱限制（`reg.exe` 黑名单 / `rc.exe`-`mt.exe` 路径）。
+`port/build-windows.bat` 已显式补上 SDK rc/mt 并接入 `apply-patches.py`，
+**需要在普通终端跑一次**：
+
+```bash
+python port/apply-patches.py
+port\build-windows.bat
+bash port/copy-assets.sh "E:/SteamLibrary/steamapps/common/Insaniquarium Deluxe"
+```
 
 ---
 
@@ -119,9 +150,19 @@ L2/L3 都只改 `port/` 派生层，符合"反编译永不修改"的架构契约
 
 ---
 
-## 5. 待你拍板的两个决策
+## 5. 决策记录（已拍板，2026-11-11）
 
-1. **poplib 基线**：(a) 换子模块到 `SaMeiers/PopLib`（已修好、已验证能跑，但夹带 Android/掌机改动）；
-   (b) 继续用官库 `master`，把 `PORT-CHANGES.md` 里的通用修复做成 `port/patches/poplib/` 补丁集，
-   构建时应用——更符合"上游只读、我们全部改动在 port 层"的契约。
-2. **UI 现代化范围**：只做 L1 + TTF，还是 L1+L2（宽屏自适应布局），或包含 L3（重绘素材）。
+1. **poplib 基线 = 留官库 + `port/patches/` 补丁集**（不 fork）。已落地 5 个最小补丁，
+   只取桌面相关的通用修复，不夹带 Android/PortMaster 掌机代码。
+2. **UI 范围 = 本轮 L1 + TTF 先行**。L2（锚点布局 / 16:9 自适应）、L3（素材重绘）
+   留到 Windows spike 验证后再排期。
+3. **游戏资产**来自用户零售版，路径已写入 `copy-assets.sh` 调用示例；
+   版权资产不入库，字体二进制也不入库（`ui.ttf` 已 gitignore）。
+
+### 后续待办（未做）
+- 普通终端跑通 Windows SDL3 spike（唯一未验证环节）；
+- 换用 OFL 中文 TTF（发布时），当前本机验证用的是系统黑体（不可再分发）；
+- `OutlineSysFont` 包装类，补回原版 `*_OUTLINE` 描边观感；
+- `port/i18n/` 字符串表：把 ~3366 个字面量抽成 `TR("key")`，
+  需先给存档/作弊码/资源 id 建白名单；
+- 扩 Linux / macOS。

@@ -8,7 +8,8 @@ Insaniquarium Deluxe 的**大修工程**：在反编译源码与社区跨平台�
 4. **兼容修复（Compat）** — 现代系统兼容 + bug 修复
 
 当前重点：**重新设计 UI（放弃原版 4:3 位图）+ 用 TTF 替换烘焙字体**。
-完整方案见 **[docs/UI-I18N-DESIGN.md](docs/UI-I18N-DESIGN.md)**（待审批）。
+**L1 + TTF + 补丁集已实施并验证**，方案与决策记录见
+**[docs/UI-I18N-DESIGN.md](docs/UI-I18N-DESIGN.md)**（L2/L3 待排期）。
 
 许可证：**AGPL-3.0**。第三方归属见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 **游戏资产不含在仓库里**，需从你自己的零售版拷贝。
@@ -52,9 +53,15 @@ InsaniquariumOverhaul/
     ├── port.sh                # 派生：include 重写 / 类型改名 / fixups
     ├── include-map.txt        # SexyAppFramework → PopLib 头文件映射（40 条）
     ├── fixups/                # 移植补丁 + main() 入口
+    ├── patches/poplib/        # 上游 poplib 的 5 个最小修复补丁（不 fork）
+    ├── make-patches.py        # 从 pristine 子模块生成补丁
+    ├── apply-patches.py       # 幂等应用 / --check / --revert
+    ├── make-resources.py      # 生成 TTF 版 resources.xml
+    ├── prepare-font.py        # 本机字体准备（字体二进制不入库）
+    ├── assets/                # resources.xml 覆盖 + 字体说明（入库）
     ├── build-windows.bat      # MSVC x64 / Ninja 构建脚本
-    ├── copy-assets.sh         # 从零售版拷贝游戏资产
-    ├── verify-assets.py       # 校验 resources.xml 引用的资源是否齐全
+    ├── copy-assets.sh         # 零售资产 + 覆盖层铺设
+    ├── verify-assets.py       # 资源校验（含 !sys: 支持 / 大小写修正）
     ├── winfish/               # 派生产物（gitignored，由 port.sh 生成）
     └── bin/                   # 可执行文件 + 资产（gitignored）
 ```
@@ -64,35 +71,44 @@ InsaniquariumOverhaul/
 ## 构建（Windows，MSVC x64）
 
 ```bash
-# 0. 首次克隆后，拉 poplib 的嵌套子模块
-git submodule update --init --recursive --depth 1
+# 0. 首次克隆后，拉嵌套子模块（不要加 --depth，会拉到错误版本）
+git submodule update --init --recursive
 
-# 1. 从只读反编译派生可构建源码
+# 1. 派生可构建源码 + 应用上游补丁（build-windows.bat 也会自动做第 2 步）
 bash port/port.sh
+python port/apply-patches.py
 
-# 2. 编译（在普通终端执行，不要在受限沙箱里）
+# 2. 准备字体（本机验证用系统字体；发布请换 OFL 字体，见 assets/fonts/README.md）
+python port/prepare-font.py --system
+python port/make-resources.py "<game>/properties/resources.xml"
+
+# 3. 编译（普通终端执行，不要在工作区沙箱内）
 port\build-windows.bat
 
-# 3. 拷贝你自己零售版的游戏资产并校验
-bash port/copy-assets.sh "C:/Program Files/Insaniquarium"
+# 4. 拷贝零售资产 + TTF 覆盖层并校验
+bash port/copy-assets.sh "E:/SteamLibrary/steamapps/common/Insaniquarium Deluxe"
 ```
 
 `build-windows.bat` 已显式把 Windows SDK 的 `rc.exe`/`mt.exe` 加入 PATH 并传给 CMake，
-并加 `/utf-8` 编译选项（TTF 中文路径必需）。
+加 `/utf-8` 编译选项（TTF 中文路径必需），并在编译前自动应用 `apply-patches.py`。
+补丁只改 `external/poplib` 的**工作树**，父仓库 gitlink 不变；上游更新后重跑
+`port/make-patches.py` 重新生成即可。
 
 ### 构建状态（实测 2026-11-11）
 
 | 项 | 状态 |
 |---|---|
 | 工具链（CMake 4.3.1 + Ninja + MSVC 19.51） | ✅ 满足 poplib 3.26 要求 |
-| poplib 嵌套子模块 | ⚠️ 9/10；`discordrpc` 上游仓库 404 |
+| poplib 嵌套子模块 | ⚠️ 9/10；`discordrpc` 上游 404（补丁已绕过） |
 | **派生链路 `port.sh`** | ✅ **跑通**：153 源文件 → 40 条 include 规则 → 150 文件重写 → 151 派生产物 |
-| CMake configure 完整编译 | ⚠️ 受本机沙箱限制（`reg.exe` 黑名单 / rc-mt 路径），需在普通终端验证 |
-| 游戏资产 | ❌ 缺失，需你提供（版权资产，仓库不分发） |
+| **上游补丁集（不 fork）** | ✅ 5 个补丁干净应用、幂等验证通过 |
+| **TTF 资源表** | ✅ 15 个字体 → `!sys:`，严格 XML 校验通过（339 元素） |
+| **资产铺设 + 资源校验** | ✅ 20M 资产 + TTF 表 + 字体就位；**328 个引用全部齐全，exit 0** |
+| CMake configure 完整编译 | ⚠️ 唯一未验证环节：受本机沙箱限制（`reg.exe` 黑名单），需在普通终端跑 |
 
-**待决策**：官库 poplib 上游已归档且有未修 bug（`resources.xml` 无引号属性解析、
-`MTRand` 负数、`SDL_FColor` 值域等），`SaMeiers/PopLib` fork 已修好但夹带掌机改动。
-是切 fork，还是把通用修复做成 `port/patches/` 补丁集？详见设计文档第 4–5 节。
+**决策已定**：留官库 poplib + `port/patches/` 补丁集（不 fork）；本轮 UI 只做
+**L1 + TTF**；游戏资产来自用户零售版，版权资产与字体二进制均不入库。
+L2（宽屏锚点布局）/ L3（素材重绘）待 Windows spike 后排期，详见设计文档第 5 节。
 
 ---
 

@@ -1,0 +1,11 @@
+--- a/PopLib/graphics/imagefont.hpp
++++ b/PopLib/graphics/imagefont.hpp
+@@ -19,7 +19,7 @@
+   public:
+ 	Rect mImageRect;
+ 	Point mOffset;
+-	char mKerningOffsets[256];
++	signed char mKerningOffsets[256];
+ 	int mWidth;
+ 	int mOrder;
+ 

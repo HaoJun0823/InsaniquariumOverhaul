@@ -91,6 +91,15 @@ def main():
 
         kind = kind.capitalize()
         rel = path.replace("\\", "/")
+        # "!sys:" is PopLib's marker for a system (SDL_ttf) font, not an
+        # asset on disk. Verify the TTF exists relative to the game dir and
+        # skip the normal resource lookup (which would append SetDefaults).
+        if rel.startswith("!sys:"):
+            ttf = rel[5:]
+            checked += 1
+            if not (BIN / ttf).is_file():
+                missing.append(("TTF", ttf))
+            continue
         # a path with its own folder ignores SetDefaults
         full = rel if "/" in rel else (f"{base}/{rel}" if base else rel)
 

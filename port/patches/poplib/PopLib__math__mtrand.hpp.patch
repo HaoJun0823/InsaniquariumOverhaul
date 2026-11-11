@@ -1,0 +1,11 @@
+--- a/PopLib/math/mtrand.hpp
++++ b/PopLib/math/mtrand.hpp
+@@ -54,7 +54,7 @@
+ 
+ 	ulong NextNoAssert()
+ 	{
+-		return dist_int(engine);
++		return dist_int(engine) & 0x7FFFFFFF;
+ 	}
+ 
+ 	ulong NextNoAssert(ulong range)

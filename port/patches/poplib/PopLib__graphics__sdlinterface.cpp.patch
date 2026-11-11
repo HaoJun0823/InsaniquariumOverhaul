@@ -1,0 +1,44 @@
+--- a/PopLib/graphics/sdlinterface.cpp
++++ b/PopLib/graphics/sdlinterface.cpp
+@@ -105,10 +105,10 @@
+ 	if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight))
+ 		return;
+ 
+-	if (!SDL_SetRenderLogicalPresentation(mRenderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX))
+-		return;
+-
+-	mPresentationRect = Rect(0, 0, windowWidth, windowHeight);
++	if (!SDL_SetRenderLogicalPresentation(mRenderer, mWidth, mHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX))
++		return;
++
++	mPresentationRect = Rect(0, 0, mWidth, mHeight);
+ }
+ 
+ int SDLInterface::Init(bool IsWindowed)
+@@ -766,7 +766,7 @@
+ {
+ 	SDL_SetRenderTarget(mRenderer, mScreenTexture);
+ 
+-	SDL_FColor aColor = {theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue(), theColor.GetAlpha()};
++	SDL_FColor aColor = {theColor.GetRed() / 255.0f, theColor.GetGreen() / 255.0f, theColor.GetBlue() / 255.0f, theColor.GetAlpha() / 255.0f};
+ 
+ 	int indices[] = {0, 1, 2};
+ 
+@@ -795,7 +795,7 @@
+ 	SDL_SetTextureAlphaMod(aTexture, theColor.GetAlpha());
+ 	SDL_SetTextureBlendMode(aTexture, ChooseBlendMode(theDrawMode));
+ 
+-	SDL_FColor aColor = {theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue(), theColor.GetAlpha()};
++	SDL_FColor aColor = {theColor.GetRed() / 255.0f, theColor.GetGreen() / 255.0f, theColor.GetBlue() / 255.0f, theColor.GetAlpha() / 255.0f};
+ 
+ 	int indices[] = {0, 1, 2};
+ 
+@@ -889,7 +889,7 @@
+ 		uvs.push_back(v.u);
+ 		uvs.push_back(v.v);
+ 
+-		SDL_FColor color = {(v.color >> 16) & 0xFF, (v.color >> 8) & 0xFF, v.color & 0xFF, (v.color >> 24) & 0xFF};
++		SDL_FColor color = {((v.color >> 16) & 0xFF) / 255.0f, ((v.color >> 8) & 0xFF) / 255.0f, (v.color & 0xFF) / 255.0f, ((v.color >> 24) & 0xFF) / 255.0f};
+ 		colors.push_back(color);
+ 	}
+ 

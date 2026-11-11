@@ -7,8 +7,9 @@ rem Run from a normal terminal (not inside an agent sandbox): vcvarsall.bat
 rem queries the registry, which some sandboxes block.
 rem
 rem   1. bash port/port.sh        -> derive port/winfish from external/winfish
-rem   2. build-windows.bat        -> this file
-rem   3. bash port/copy-assets.sh <your retail game folder>
+rem   2. python port/apply-patches.py  -> fix upstream PopLib bugs (no fork)
+rem   3. build-windows.bat        -> this file
+rem   4. bash port/copy-assets.sh <your retail game folder>
 rem ---------------------------------------------------------------------------
 
 set "VS=C:\Program Files\Microsoft Visual Studio\18\Community"
@@ -20,6 +21,14 @@ set "ROOT=%~dp0.."
 call "%VS%\VC\Auxiliary\Build\vcvarsall.bat" x64
 if errorlevel 1 (
   echo [ERROR] vcvarsall.bat failed. Edit VS= in this script to match your install.
+  exit /b 1
+)
+
+rem Apply the reviewed upstream fixes to the pristine PopLib submodule.
+rem Idempotent: already-applied patches are skipped.
+python "%ROOT%\port\apply-patches.py"
+if errorlevel 1 (
+  echo [ERROR] PopLib patches conflict; update them with port\make-patches.py
   exit /b 1
 )
 

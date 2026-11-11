@@ -1,0 +1,85 @@
+--- a/PopLib/readwrite/xmlparser.cpp
++++ b/PopLib/readwrite/xmlparser.cpp
+@@ -1,4 +1,5 @@
+-#include "xmlparser.hpp"
++#include "xmlparser.hpp"
++#include <string>
+ #include "debug/debug.hpp"
+ #include "paklib/pakinterface.hpp"
+ 
+@@ -32,6 +33,67 @@
+     mSectionStack.clear();
+ }
+ 
++// PopCap's resources.xml is not valid XML: attributes such as cols=3 are
++// unquoted. The original hand-written parser accepted them; tinyxml2 does not.
++// Rewrite only inside tags, copying comments/CDATA/text verbatim.
++static std::string QuoteBareAttributeValues(const std::string &s)
++{
++	std::string out;
++	out.reserve(s.size() + 64);
++	const size_t n = s.size();
++	size_t i = 0;
++	auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
++	while (i < n)
++	{
++		if (s.compare(i, 4, "<!--") == 0 || s.compare(i, 9, "<![CDATA[") == 0)
++		{
++			bool cdata = s.compare(i, 9, "<![CDATA[") == 0;
++			const char *end = cdata ? "]]>" : "-->";
++			size_t j = s.find(end, i);
++			if (j == std::string::npos) { out.append(s, i, n - i); break; }
++			j += 3;
++			out.append(s, i, j - i);
++			i = j;
++			continue;
++		}
++		if (s[i] != '<') { out += s[i++]; continue; }
++		out += s[i++];
++		while (i < n && s[i] != '>')
++		{
++			if (space(s[i])) { out += s[i++]; continue; }
++			if (s[i] == '/' || s[i] == '?') { out += s[i++]; continue; }
++			size_t nameStart = i;
++			while (i < n && !space(s[i]) && s[i] != '=' && s[i] != '>' && s[i] != '/') ++i;
++			out.append(s, nameStart, i - nameStart);
++			size_t look = i;
++			while (look < n && space(s[look])) ++look;
++			if (look < n && s[look] == '=')
++			{
++				out.append(s, i, look - i);
++				i = look + 1;
++				while (i < n && space(s[i])) out += s[i++];
++				if (i < n && (s[i] == '"' || s[i] == '\''))
++				{
++					char q = s[i];
++					out += s[i++];
++					while (i < n && s[i] != q) out += s[i++];
++					if (i < n) out += s[i++];
++				}
++				else
++				{
++					out += '"';
++					size_t valStart = i;
++					while (i < n && !space(s[i]) && s[i] != '>' && s[i] != '/') ++i;
++					out.append(s, valStart, i - valStart);
++					out += '"';
++				}
++			}
++		}
++		if (i < n && s[i] == '>') out += s[i++];
++	}
++	return out;
++}
++
+ bool XMLParser::AddAttribute(XMLElement *theElement, const PopString &theAttributeKey, const PopString &theAttributeValue)
+ {
+     if (theAttributeValue == "SUNFLOWER_HEAD_SING1")
+@@ -90,6 +152,7 @@
+     else
+         aNewWrappedBuffer = input;
+ 
++    aNewWrappedBuffer = QuoteBareAttributeValues(aNewWrappedBuffer);
+     const char* data = aNewWrappedBuffer.c_str();
+     size_t size = aNewWrappedBuffer.size();
+ 

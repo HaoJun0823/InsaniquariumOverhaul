@@ -9,7 +9,11 @@ port/assets/music/
 port/assets/sounds/
 port/assets/fishsongs/
 port/assets/*.pak
-# 我们自己的字体与 resources.xml 覆盖文件保留入库
+# 我们自己的 resources.xml 覆盖文件保留入库；字体二进制不入库
+port/assets/fonts/ui.ttf
+port/assets/fonts/*.ttf
+port/assets/fonts/*.otf
+port/assets/fonts/*.ttc
 out/
 cmake-build-*/
 *.user

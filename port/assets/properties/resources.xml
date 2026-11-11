@@ -1,0 +1,393 @@
+<?xml version="1.0"?>
+<ResourceManifest>
+
+<!-- Init Resources -->
+<Resources id="Init">
+<SetDefaults path="images" idprefix="IMAGE_" />
+
+<Image id="CURSOR_POINTER"					path="cursor_pointer" />
+<Image id="CURSOR_HAND"						path="cursor_hand" />
+<Image id="CURSOR_DRAGGING"					path="cursor_dragging" />
+<Image id="CURSOR_TEXT"						path="cursor_text" />
+<Image id="BLANK"							path="blank" />
+<Image id="TITLEPAGE"						path="titlescreen" />
+<Image id="TITLEPAGEMASK"					path="titlescreenmask" />
+<Image id="LOADERBAR"						path="loaderbar" />
+<Image id="LOADERBAROVER"					path="loaderbarover" />
+<Image id="LOADERBARLOADING"				path="loaderbarloading" />
+<Image id="LOADERPLAY"						path="loaderplay" />
+
+<SetDefaults path="data" idprefix="FONT_" />
+<Font id="JUNGLEFEVER10OUTLINE" path="!sys:fonts/ui.ttf" size="10" bold="1" shadow="1" />
+<Font id="JUNGLEFEVER17OUTLINE" path="!sys:fonts/ui.ttf" size="17" bold="1" shadow="1" />
+
+<SetDefaults path="sounds" idprefix="SOUND_" />
+<Sound id="BUTTONCLICK"						path="buttonclick" /> 
+
+</Resources>
+
+<Resources id="Register">
+
+<SetDefaults path="data" idprefix="FONT_" />
+<Font id="LIDDIE12" path="!sys:fonts/ui.ttf" size="12" />
+<Font id="LIDDIE15" path="!sys:fonts/ui.ttf" size="15" />
+<Font id="LIDDIE18" path="!sys:fonts/ui.ttf" size="18" />
+<Font id="JUNGLEFEVER12OUTLINE" path="!sys:fonts/ui.ttf" size="12" bold="1" shadow="1" />
+<Font id="JUNGLEFEVER15OUTLINE" path="!sys:fonts/ui.ttf" size="15" bold="1" shadow="1" />
+<Font id="BLAMBOTPRO8" path="!sys:fonts/ui.ttf" size="8" />
+<Font id="BLAMBOTPRO15" path="!sys:fonts/ui.ttf" size="15" />
+<Font id="TINY" path="!sys:fonts/ui.ttf" size="8" />
+<Font id="TINYBOLD" path="!sys:fonts/ui.ttf" size="8" bold="1" shadow="1" />
+<Font id="CONTINUUMBOLD12" path="!sys:fonts/ui.ttf" size="12" bold="1" />
+<Font id="CONTINUUMBOLD12OUTLINE" path="!sys:fonts/ui.ttf" size="12" bold="1" shadow="1" />
+<Font id="CONTINUUMBOLD14" path="!sys:fonts/ui.ttf" size="14" bold="1" />
+<Font id="CONTINUUMBOLD14OUTLINE" path="!sys:fonts/ui.ttf" size="14" bold="1" shadow="1" />
+
+<SetDefaults path="images" idprefix="IMAGE_" />
+<Image id="DIALOG"							path="dialogue-panel" />
+<Image id="DIALOGBUTTON"					path="dialogbutton2" />
+<Image id="EDITBOX"							path="editbox" />
+
+</Resources>
+
+
+<Resources id="LoadingThread">
+
+<SetDefaults path="images" idprefix="IMAGE_" />
+
+<!-- Screens -->
+<Image id="SELECTORSCREEN"					path="selectorback" />
+<Image id="STORESCREEN"						path="store" />
+<Image id="HATCHSCREEN"						path="hatchscreen" />
+
+<!-- Various Interface Building Components -->
+<Image id="MAINBUTTON"						path="mainbutton" alphagrid="mainbutton_" cols="3" />
+<Image id="LEFTBUTTON"						path="leftbutton" alphagrid="leftbutton_" cols="3" />
+<Image id="RIGHTBUTTON"						path="rightbutton" alphagrid="rightbutton_" cols="3" />
+<Image id="CENTERBUTTON"					path="centerbutton" alphagrid="centerbutton_" cols="3" />
+<Image id="SCREENBACK"						path="screenback"	/>
+<Image id="SCREENTITLE"						path="screentitle"	/>
+<Image id="SCREENTITLEHOLE"					path="screentitlehole"	/>
+<Image id="FISHBOX"							path="fishbox"		/>
+<Image id="FISHBOXBUTTON"					path="fishboxbutton" />
+<Image id="PETBUTTON"						path="petbutton" cols="4" />
+<Image id="PETBUTTONRING"					path="petbuttonring" />
+<Image id="PETBUTTONREFLECT"				path="petbuttonreflect" />
+<Image id="PETBUTTONHOLE"					path="petbuttonhole" />
+<Image id="STORELEFTBUTTON"					path="storeleftbutton" />
+<Image id="STORETOPBUTTON"					path="storetopbutton" />
+<Image id="STORERIGHTBUTTON"				path="storerightbutton" />
+<Image id="STORELEFTHILIGHT"				path="storelefthilight" />
+<Image id="STORETOPHILIGHT"					path="storetophilight" />
+<Image id="STORERIGHTHILIGHT"				path="storerighthilight" />
+
+<!-- Buttons and other UI -->
+<Image id="BATTLETANKBUTTON"				path="battletankbutton" />
+<Image id="BATTLETANKBUTTOND"				path="battletankbuttond" />
+<Image id="MIDDLEBUTTON"					path="middlebutton" />
+<Image id="MIDDLEBUTTOND"					path="middlebuttond" />
+<Image id="OPTIONSBUTTON"					path="optionsbutton" />
+<Image id="OPTIONSBUTTOND"					path="optionsbuttond" />
+<Image id="MENUBTND"						path="mbuttond" />
+<Image id="MENUBTND2"						path="mbuttond" alphaimage="_mbuttono" />
+<Image id="MENUBTNU"						path="mbuttonu" />
+<Image id="MENUBTNO"						path="mbuttono" />
+<Image id="PETBTNU"							path="petbtnu" />
+<Image id="PETBTNO"							path="petbtno" />
+<Image id="UNCHECKED"						path="uncheckbutton" />
+<Image id="CHECKED"							path="checkbutton" />
+<Image id="SLIDERTRACK"						path="slidertrack" />
+<Image id="SLIDERTHUMB"						path="sliderwidget" />
+
+<!-- Misc small items -->
+<Image id="WAIT_BAR"						path="waitbar" />
+<Image id="MENUBAR"							path="menubar" />
+<Image id="MENUBAR_LONG"				    path="menubar_long" />
+<Image id="MENUBAR_EXTRA"				    path="menubar_extra" />
+<Image id="MONEYFLASH"						path="moneyflash" />
+<Image id="MENUBUTTONREFLECTION"			path="mbreflection" />
+<Image id="TROPHYBAR"						path="trophybar" />
+<Image id="SPEECHBUBBLE"					path="speechbubble" />
+<Image id="SHADOW"							path="shadow" />
+<Image id="HATCHREFLECTION"					path="incubatorreflection" />
+<Image id="SELECTORSPEECHBUBBLE"			path="gsspeechbubble" />
+<Image id="HELPARROW"						path="arrow1" />
+<Image id="TANKCHOOSER"						path="tankchooser" />
+<Image id="BOLT"							path="bolt" />
+<Image id="HORZCREASE"						path="horzcrease" />
+<Image id="VERTCREASE"						path="vertcrease" />
+<Image id="BUBBULATOR_STORE"				path="bubbulatorstore"	/>
+<Image id="AA_STORE"						path="aastore" />
+<Image id="ZZZ"								path="zzz"	/>
+<Image id="BONUSBUCKET"						path="bonusbucket" />
+<Image id="HELPALIEN"						path="helpalien" />
+<Image id="HELPPETCHOOSE"					path="helppetchoose" />
+<Image id="HELPSCREENSAVER"					path="helpscreensaver" />
+<Image id="BONUS1"							path="bonus1" />
+<Image id="BONUS2"							path="bonus2" />
+<Image id="BONUS3"							path="bonus3" />
+<Image id="WELCOMETO"						path="welcometo" />
+<Image id="WELCOMEBACK"						path="welcomeback" />
+<Image id="PIZZA"							path="pizza2" />
+<Image id="ICECREAM"						path="icecream" />
+<Image id="CHICKEN"							path="chicken" />
+<Image id="SPARKLE"							path="sparkle" cols="14" />
+<Image id="TANKBACKDROP1"					path="tankbackdrop1"		alphaimage="tankbackdrops_" />
+<Image id="TANKBACKDROP2"					path="tankbackdrop2"		alphaimage="tankbackdrops_" />
+<Image id="TANKBACKDROP3"					path="tankbackdrop3"		alphaimage="tankbackdrops_" />
+<Image id="TANKBACKDROP4"					path="tankbackdrop4"		alphaimage="tankbackdrops_" />
+<Image id="TANKBACKDROP5"					path="tankbackdrop5"		alphaimage="tankbackdrops_" />
+<Image id="TANKBACKDROP6"					path="tankbackdrop6"		alphaimage="tankbackdrops_" />
+
+<Image id="HEALTHBAR"						path="healthbar" />
+<Image id="HEALTHBARTUBE"					path="healthbartube" />
+<Image id="HELPSHELL"						path="helpshell" />
+<Image id="STORESHELL"						path="storeshell" />
+<Image id="BONUSBUTTONOVERLAY"				path="bonusbuttonoverlay" />
+<Image id="FATBUTTON"						path="fatbutton" />
+<Image id="EGGBRINKLEY"						path="eggbrink"			alphaimage="eggbonus_" />
+<Image id="EGGNOSTRADAMUS"					path="eggnostradamus"	alphaimage="eggbonus_" />
+<Image id="EGGSTANLEY"						path="eggstanley"		alphaimage="eggbonus_" />
+<Image id="EGGWALTER"						path="eggwalter"		alphaimage="eggbonus_" />
+<Image id="PETLIMITEGG"						path="petlimitegg" />
+<Image id="BONUSAWARD"						path="bonusaward"	/>
+<Image id="BONUSAWARD2"						path="bonusaward2"	/>
+
+<!-- Alien Attractor -->
+<Image id="AA_BEAM"							path="aabeam" />
+<Image id="AA_GLOW"							path="aaglow" />
+<Image id="AA_TOP1"							path="aatop1" alphaimage="aatop_" />
+<Image id="AA_TOP2"							path="aatop2" alphaimage="aatop_" />
+<Image id="AA_BOTTOM"						path="aabottom" />
+
+<!-- Various strips -->
+<Image id="SPARKS"							path="sparks"				cols="5"					/>
+<Image id="ENERGYBALL"						path="energyball"			cols="6"					/>
+<Image id="CHOMP"							path="chomp"				cols="5"					/>
+<Image id="LASERS"							path="lasers"				cols="10"	rows="6"		/>
+<Image id="BUBBLES"							path="bubbles"				cols="5"					/>
+<Image id="MONEY"							path="money"				cols="10"	rows="6"		/>
+<Image id="PEARL"							path="pearl"											/>
+<Image id="PEANUT"							path="blank"											/>
+<Image id="MISCITEMS"						path="miscitems"			cols="3"					/>
+<Image id="SHELLS"							path="shells"				cols="20"	rows="4"		/>
+<Image id="MONEYBAG"						path="bag"					cols="1"	rows="1"		/>
+<Image id="FOOD"							path="food"					cols="10"	rows="5"		/>
+<Image id="BALLS"							path="balls"				cols="10"	rows="4"		/>
+<Image id="MERYLLIPS"						path="meryllipps"			cols="3"					/>
+<Image id="MERYLBLINK"						path="merylblink"			cols="3"			anim="once" framemap="0,1,2,1,0,-1" perframedelay="3,2,3,1,1,1"				/>
+<Image id="MERYLTAIL"						path="tailflop"				cols="8"			anim="once" framemap="7,6,5,4,3,2,1,0" begindelay="3" framedelay="2"						/>
+<Image id="CROSSHAIR"						path="crosshair"			cols="5"					/>
+<Image id="HATCHANIMATION"					path="hatchanimation"		cols="3"					/>
+<Image id="TROPHYBUTTONS"					path="trophybutts"			cols="6"					/>
+<Image id="EXPLOSION"						path="explosion"			cols="10"					/>
+<Image id="EXPLOSIONSMALL"					path="explosionsmall"		cols="10"					/>
+<Image id="EXPLOSIONTINY"					path="explosiontiny"		cols="10"					/>
+<Image id="SMOKETINY"						path="smoketiny"			cols="20"					/>
+<Image id="SMOKESMALL"						path="smokesmall"			cols="20"					/>
+<Image id="SMOKEMISSILE"					path="smokemissile"			cols="20"					/>
+<Image id="WARPHOLE"						path="warphole"				cols="17"					/>
+<Image id="WARPGLOW"						path="warpglow"				cols="17"					/>
+<Image id="EGGPIECES"						path="eggpieces"			cols="3"					/>
+<Image id="EGGSHARDS"						path="eggshards"			cols="8"					/>
+<Image id="EGGCRACK1"						path="eggcrack1"			cols="13"					/>
+<Image id="EGGCRACK2"						path="eggcrack2"			cols="10"					/>
+<Image id="BUBBULATOR"						path="bubbulator"			rows="20"					/>
+<Image id="STOREBACKDROPS"					path="storeaquariums"		cols="6"					/>
+<Image id="WAVESIDE"						path="waveside"				rows="12"	anim="pingpong" framedelay="4" begindelay="6"	/>
+<Image id="WAVE"							path="wavecenter"			rows="12"	anim="pingpong" framedelay="4" begindelay="6"					/>
+<Image id="LASERUPGRADES"					path="lazergunz"			cols="10"					/>
+<Image id="MISSILE"							path="missile"				cols="16"					/>
+
+<!-- Aquariums -->
+<Image id="AQUARIUM1"						path="aquarium1" ddsurface="" />
+<Image id="AQUARIUM2"						path="aquarium2" ddsurface="" />
+<Image id="AQUARIUM3"						path="aquarium3" ddsurface="" />
+<Image id="AQUARIUM4"						path="aquarium4" ddsurface="" />
+<Image id="AQUARIUM5"						path="aquarium5" ddsurface="" />
+<Image id="AQUARIUM6"						path="aquarium6" ddsurface="" />
+<Image id="TANKMASK1"						path="mask1" />
+<Image id="TANKMASK2"						path="mask2" />
+<Image id="TANKMASK3"						path="mask3" />
+<Image id="TANKMASK4"						path="mask4" />
+<Image id="TANKMASK5"						path="mask5" />
+<Image id="TANKMASK6"						path="mask6" />
+
+<!-- Characters -->
+<Image id="SMALLTURN"						path="smallturn" />
+<Image id="HUNGRYTURN"						path="hungryturn" />
+<Image id="HUNGRYEAT"						path="hungryeat" />
+<Image id="SIMTURN1"						path="guppy_turn1" />
+<Image id="SIMTURN2"						path="guppy_turn2" />
+<Image id="SIMTURN3"						path="guppy_turn3" />
+
+<!-- Characters that need to be mirrored -->
+<Image id="SMALLEAT"						path="smalleat"	/>
+<Image id="SMALLDIE"						path="smalldie" />
+<Image id="HUNGRYSWIM"						path="hungryswim"			cols="10" rows="5" />
+<Image id="HUNGRYBREEDER"					path="hungrybreeder" />
+<Image id="SIMEAT1"							path="guppy_eat1" />
+<Image id="SIMEAT2"							path="guppy_eat2" />
+<Image id="SIMEAT3"							path="guppy_eat3" />
+<Image id="SIMSWIM1"						path="guppy_swim1" />
+<Image id="SIMSWIM2"						path="guppy_swim2" />
+<Image id="SIMSWIM3"						path="guppy_swim3" />
+<Image id="SIMCARNIVORE"					path="simcarnivore" />
+<Image id="TANKLIGHTING"					path="tanklighting" />
+
+<!-- aliens -->
+<Image id="SYLV"							path="sylv"					cols="10" rows="2" anim="loop" framedelay="2" />
+<Image id="BALROG"							path="balrog"				cols="10" rows="2" anim="loop" framedelay="2" />
+<Image id="GUS"								path="gus"					cols="10" rows="3" anim="loop" framedelay="2" />
+<Image id="DESTRUCTOR"						path="destructor"			cols="10" rows="2" anim="loop" framedelay="2" />
+<Image id="ULYSSES"							path="ulysses"				cols="10" rows="3" anim="loop" framedelay="4" />
+<Image id="PSYCHOSQUID"						path="psychosquid"			cols="10" rows="5" anim="loop" framedelay="2" />
+<Image id="BILATERUS"						path="bilaterus"			cols="10" rows="8" />
+<Image id="MINISYLV"						path="smallsylv"			cols="10" rows="2" anim="loop" framedelay="2" />
+<Image id="BOSS"							path="boss"					cols="10" rows="2" anim="loop" framedelay="2" />
+
+
+<!-- Pet Extra Parts -->
+<Image id="HALO"							path="halo"			cols="10" rows="2"/>
+<Image id="GUMBOLIGHT"						path="gumbolight"	cols="10" rows="2"/>
+<Image id="AMPCHARGE"						path="ampcharge"	cols="10" rows="2"/>
+<Image id="NIKOTOWER"						path="nikotower" />
+
+<!-- Characters that need to be mirrored and scaled -->
+<Image id="STINKY"							path="stinky"					cols="10"	rows="3" anim="loop" framedelay="2" />
+<Image id="NIKO"							path="niko"						cols="10"	rows="3" anim="pingpong" framedelay="2" />
+<Image id="ITCHY"							path="itchy"					cols="10"	rows="4" anim="loop" framedelay="2" />
+<Image id="PREGO"							path="prego" 					cols="10"	rows="4" anim="loop" framedelay="2" />
+<Image id="ZORF"							path="zorf" 					cols="10"	rows="3" anim="loop" framedelay="2" />
+<Image id="CLYDE"							path="clyde" 					cols="10"	rows="1" anim="loop" framedelay="4" />
+<Image id="VERT"							path="vert" 					cols="10"	rows="2" anim="pingpong" framedelay="2" />
+<Image id="RUFUS"							path="rufus" 					cols="10"	rows="2" anim="loop" framedelay="4" />
+<Image id="MERYL"							path="meryl" 					cols="10"	rows="4" anim="loop" framedelay="2" />
+<Image id="WADSWORTH"						path="wadsworth" 				cols="10"	rows="3" anim="loop" framedelay="2" />
+<Image id="SEYMOUR"							path="seymour" 					cols="10"	rows="2" anim="loop" framedelay="4" />
+<Image id="SHRAPNEL"						path="shrapnel" 				cols="10"	rows="2" anim="loop" framedelay="4" />
+<Image id="GUMBO"							path="gumbo" 					cols="10"	rows="2" anim="loop" framedelay="2" />
+<Image id="BLIP"							path="blip" 					cols="10"	rows="2" anim="loop" framedelay="2" />
+<Image id="RHUBARB"							path="rhubarb" 					cols="10"	rows="2" anim="loop" framedelay="4" />
+<Image id="NIMBUS"							path="nimbus" 					cols="10"	rows="2" anim="loop" framedelay="2" />
+<Image id="AMP"								path="amp" 						cols="10"	rows="2" anim="loop" framedelay="2" />
+<Image id="GASH"							path="gash" 					cols="10"	rows="3" anim="loop" framedelay="2" />
+<Image id="ANGIE"							path="angie" 					cols="10"	rows="2" anim="loop" framedelay="2" />
+<Image id="PRESTO"							path="presto" 					cols="10"	rows="3" anim="loop" framedelay="2" />
+<Image id="BRINKLEY"						path="brink" 					cols="10"	rows="2" anim="loop" framedelay="4" />
+<Image id="NOSTRADAMUS"						path="nostradamus" 				cols="10"	rows="2" anim="loop" framedelay="2" />
+<Image id="STANLEY"							path="stanley" 					cols="10"	rows="6" anim="loop" framedelay="2" />
+<Image id="WALTER"							path="walter" 					cols="10"	rows="3" anim="pingpong" framedelay="2" />
+
+<Image id="SMALLSWIM"						path="smallswim"				cols="10"	rows="5"/>
+<Image id="GRUBBER"							path="grubgrubber"				cols="10"	rows="5"/>
+<Image id="STARCATCHER"						path="starcatcher"				cols="10"	rows="3"/>	
+<Image id="GEKKO"							path="gekko"					cols="10"	rows="7"/>
+<Image id="BREEDER"							path="breeder"					cols="10"	rows="9"/>
+<Image id="ULTRA"							path="ultravore"				cols="10"	rows="4"/>
+
+<Image id="SCL_STINKY"						path="scl_stinky"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_NIKO"						path="scl_niko"			cols="10" anim="pingpong" framedelay="2" />
+<Image id="SCL_ITCHY"						path="scl_itchy"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_PREGO"						path="scl_prego"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_ZORF"						path="scl_zorf"			cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_CLYDE"						path="scl_clyde"		cols="10" anim="loop" framedelay="4" />
+<Image id="SCL_VERT"						path="scl_vert"			cols="10" anim="pingpong" framedelay="2" />
+<Image id="SCL_RUFUS"						path="scl_rufus"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_MERYL"						path="scl_meryl"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_WADSWORTH"					path="scl_wadsworth"	cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_SEYMOUR"						path="scl_seymour"		cols="10" anim="loop" framedelay="4" />
+<Image id="SCL_SHRAPNEL"					path="scl_shrapnel"		cols="10" anim="loop" framedelay="4" />
+<Image id="SCL_GUMBO"						path="scl_gumbo"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_BLIP"						path="scl_blip"			cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_RHUBARB"						path="scl_rhubarb"		cols="10" anim="loop" framedelay="4" />
+<Image id="SCL_NIMBUS"						path="scl_nimbus"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_AMP"							path="scl_amp"			cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_GASH"						path="scl_gash"			cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_ANGIE"						path="scl_angie"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_PRESTO"						path="scl_presto"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_BRINKLEY"					path="scl_brink"		cols="10" anim="loop" framedelay="4" />
+<Image id="SCL_NOSTRADAMUS"					path="scl_nostradamus"	cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_STANLEY"						path="scl_stanley"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_WALTER"						path="scl_walter"		cols="10" anim="pingpong" framedelay="2" />
+
+<Image id="SCL_OSCAR"						path="scl_oscar"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_GRUBBER"						path="scl_grubber"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_STARCATCHER"					path="scl_starcatcher"	cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_GEKKO"						path="scl_gekko"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_BREEDER"						path="scl_breeder"		cols="10" anim="loop" framedelay="2" />
+<Image id="SCL_ULTRA"						path="scl_ultra"		cols="10" anim="loop" framedelay="2" />
+					
+
+<SetDefaults path="sounds" idprefix="SOUND_" />
+<Sound id="AWOOGA"							path="awooga" alias="START" /> 
+<Sound id="APPLAUSE"						path="applause" /> 
+<Sound id="BABY"							path="baby" /> 
+<Sound id="BONUSCOUNT"						path="bonuscount" /> 
+<Sound id="TONE"							path="ding" />
+<Sound id="TONELO"							path="dinglo" />
+<Sound id="TONEHI"							path="dinghi" />
+<Sound id="TONESUPERHI"						path="dingsuperhi" />
+<Sound id="PRIMALSCREAM"					path="bigchomp" />
+<Sound id="BONUSCOLLECT"					path="bonuscollect" />
+<Sound id="BUBBLES"							path="bubbles" /> 
+<Sound id="BUY"								path="buy" /> 
+<Sound id="BUZZER"							path="buzzer" /> 
+<Sound id="CHOMP"							path="chomp" /> 
+<Sound id="CHOMP2"							path="chomp2" /> 
+<Sound id="CROWNED"							path="crowned1" /> 
+<Sound id="DIAMOND"							path="diamond" /> 
+<Sound id="DIE"								path="die" /> 
+<Sound id="DROPFOOD"						path="dropfood" /> 
+<Sound id="EEL1"							path="eel1" /> 
+<Sound id="EEL2"							path="eel2" /> 
+<Sound id="EEL3"							path="eel3" /> 
+<Sound id="EVILLAFF"						path="evillaff" /> 
+<Sound id="EXPLODE"							path="explode" volume="0.75"/> 
+<Sound id="EXPLOSION1"						path="explosion1" /> 
+<Sound id="EXPLOSION4"						path="explosion4" /> 
+<Sound id="FART"							path="fart" /> 
+<Sound id="FART2"							path="ultraprego" /> 
+<Sound id="GROW"							path="grow" /> 
+<Sound id="GUFFAW"							path="guffaw" /> 
+<Sound id="HATCH"							path="hatch" /> 
+<Sound id="HEAL"							path="heal" /> 
+<Sound id="HIT"								path="hit" volume="0.75" /> 
+<Sound id="INTERFER"						path="interfer" /> 
+<Sound id="MISSLE"							path="missle" /> 
+<Sound id="NIKOOPEN"						path="nikoopen" volume="0.5" /> 
+<Sound id="NIKOCLOSE"						path="nikoclose" volume="0.5" /> 
+<Sound id="PEARL"							path="pearl" /> 
+<Sound id="POINTS"							path="points" /> 
+<Sound id="POINTS2"							path="points2" /> 
+<Sound id="POINTS3"							path="points3" /> 
+<Sound id="POINTS4"							path="points4" /> 
+<Sound id="PUNCH"							path="punch" /> 
+<Sound id="RATTLE"							path="rattle" /> 
+<Sound id="RICOCHET"						path="ricochet" volume="1.0" />
+<Sound id="ROAR"							path="roar" /> 
+<Sound id="ROAR2"							path="roar2" /> 
+<Sound id="ROAR3"							path="roar3" />
+<Sound id="SFX"								path="sfx" /> 
+<Sound id="SING"							path="sing" /> 
+<Sound id="SLURP"							path="slurp" /> 
+<Sound id="SLURP2"							path="slurp2" /> 
+<Sound id="SLURP3"							path="slurp3" /> 
+<Sound id="SNEEZE"							path="sneeze" /> 
+<Sound id="SONAR"							path="sonar" />
+<Sound id="SPLASH"							path="splash" /> 
+<Sound id="SPLASH2"							path="splash2" /> 
+<Sound id="SPLASH3"							path="splash3" /> 
+<Sound id="SPLASHBIG"						path="splashbig" /> 
+<Sound id="TAPGLASS"						path="tapglass" /> 
+<Sound id="TREASURE"						path="treasure" /> 
+<Sound id="UNLEASH"							path="unleash" /> 
+<Sound id="ZAP"								path="zap" volume="1.0"/> 
+<Sound id="ZZAM"							path="zzam" volume="0.8" alias="END"/>
+
+</Resources>
+
+
+
+
+</ResourceManifest>
