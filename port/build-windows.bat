@@ -68,10 +68,21 @@ set "PATH=%SDKROOT%\bin\%SDKVER%\x64;%NINJA%;%PATH%"
 rem IMPORTANT: -D path values are written verbatim into generated .cmake files.
 rem Windows backslashes become invalid escapes there ("\P"), so use forward
 rem slashes for every path passed with -D. CMake accepts them on Windows.
-set "RC_FWD=%SDKROOT%/bin/%SDKVER%/x64/rc.exe"
-set "MT_FWD=%SDKROOT%/bin/%SDKVER%/x64/mt.exe"
+rem The root itself must be converted first: building "%SDKROOT%/bin/..." from a
+rem backslashed root still yields "C:\Program Files (x86)\...", and CMake dies
+rem with "Invalid character escape '\P'" while enabling the RC language.
+set "SDKROOT_FWD=%SDKROOT:\=/%"
+set "RC_FWD=%SDKROOT_FWD%/bin/%SDKVER%/x64/rc.exe"
+set "MT_FWD=%SDKROOT_FWD%/bin/%SDKVER%/x64/mt.exe"
 
-"%CMAKE%" -S "%ROOT%\port" -B "%ROOT%\build\game" -G Ninja -Wno-dev ^
+rem IMPORTANT: the source root is the REPOSITORY ROOT, not port/.
+rem Configuring port/ directly (the old behaviour) silently bypassed the root
+rem CMakeLists.txt, so the four pillar options, the project version, and
+rem include(CTest) never took effect: the root build file was dead code and the
+rem exe reported a version belonging to PopLib. Keep -S "%ROOT%".
+rem If an existing build\game cache was created with -S port, CMake will refuse
+rem to reuse it; delete build\game once after this change.
+"%CMAKE%" -S "%ROOT%" -B "%ROOT%\build\game" -G Ninja -Wno-dev ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DCMAKE_RC_COMPILER="%RC_FWD%" ^
   -DCMAKE_MT="%MT_FWD%" ^

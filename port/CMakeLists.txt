@@ -11,6 +11,79 @@ project(InsaniquariumOverhaul.Game LANGUAGES C CXX ASM)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# --- OverhaulCore: the only place new C++ code lives ------------------------
+#
+# Everything else in this build is either a pinned upstream submodule or a
+# mechanically derived copy of one. Without a library we own, every new feature
+# has to be smuggled into an upstream file through a patch or a byte
+# substitution — which is exactly the failure mode this repository is
+# recovering from. Modules that belong here: diagnostics, layout, i18n
+# catalogues, input scripting. Modules that do not: game rules, rendering
+# backends, anything that needs a window at static-init time.
+set(OVERHAUL_VERSION "${InsaniquariumOverhaul_VERSION}")
+if(NOT OVERHAUL_VERSION)
+	set(OVERHAUL_VERSION "0.0.0-dev")
+endif()
+
+# Build identity. Captured at configure time on purpose: a stale commit hash in
+# a bug report is worse than none, and the configure step is where the source
+# state is fixed.
+set(OVERHAUL_GIT_COMMIT "unknown")
+execute_process(
+	COMMAND git rev-parse --short HEAD
+	WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+	OUTPUT_VARIABLE _overhaul_commit
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+	ERROR_QUIET
+	RESULT_VARIABLE _overhaul_git_result)
+if(_overhaul_git_result EQUAL 0 AND _overhaul_commit)
+	set(OVERHAUL_GIT_COMMIT "${_overhaul_commit}")
+endif()
+
+add_library(OverhaulCore STATIC
+	${CMAKE_CURRENT_LIST_DIR}/src/overhaul/buildinfo.cpp
+	${CMAKE_CURRENT_LIST_DIR}/src/overhaul/env.cpp
+	${CMAKE_CURRENT_LIST_DIR}/src/overhaul/log.cpp
+	${CMAKE_CURRENT_LIST_DIR}/src/overhaul/startup.cpp
+)
+
+target_include_directories(OverhaulCore PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
+target_compile_features(OverhaulCore PUBLIC cxx_std_20)
+target_compile_definitions(OverhaulCore PRIVATE
+	OVERHAUL_VERSION="${OVERHAUL_VERSION}"
+	OVERHAUL_BUILD_CONFIG="$<CONFIG>"
+	OVERHAUL_GIT_COMMIT="${OVERHAUL_GIT_COMMIT}"
+)
+
+if(MSVC)
+	target_compile_options(OverhaulCore PRIVATE /utf-8 /W4)
+	target_compile_definitions(OverhaulCore PRIVATE _CRT_SECURE_NO_WARNINGS)
+else()
+	target_compile_options(OverhaulCore PRIVATE -Wall -Wextra -finput-charset=UTF-8)
+endif()
+
+message(STATUS "OverhaulCore: version=${OVERHAUL_VERSION} commit=${OVERHAUL_GIT_COMMIT}")
+
+# --- Dependency subprojects: no tests ---------------------------------------
+#
+# zlib, tinyxml2 and PopLib register their own CTest tests when BUILD_TESTING is
+# on. Those tests are never built by our targets, so `ctest` reports them as
+# "Not Run" and exits non-zero for reasons that have nothing to do with this
+# repository — noise that hides a real failure in the only test that matters.
+#
+# The top-level CMakeLists.txt calls enable_testing(), so test discovery still
+# works; flipping the cache entry off only stops subprojects from registering.
+# Our own tests are gated by OVERHAUL_TESTS, not by this.
+set(BUILD_TESTING OFF CACHE BOOL "Third-party tests disabled; see OVERHAUL_TESTS" FORCE)
+
+# Vendored projects that ignore BUILD_TESTING and carry their own switch. Listed
+# explicitly: a new dependency with tests will show up in `ctest` output, which
+# is the intended way to notice it, and adding a line here is the fix.
+set(ZLIB_BUILD_TESTING OFF CACHE BOOL "Third-party tests disabled" FORCE)
+set(tinyxml2_BUILD_TESTING OFF CACHE BOOL "Third-party tests disabled" FORCE)
+
+option(OVERHAUL_TESTS "Build and register OverhaulCore unit tests" ON)
+
 # --- PopLib as a subproject: library only, no demos/tools -------------------
 set(BUILD_EXAMPLES      OFF CACHE BOOL "" FORCE)
 set(BUILD_TOOLS         OFF CACHE BOOL "" FORCE)
@@ -63,7 +136,7 @@ endif()
 # SDL_ttf renders it as UTF-8. Without it MSVC recodes Chinese literals to the
 # local ANSI codepage and every CJK string arrives garbled.
 
-target_link_libraries(WinFish PRIVATE PopLib)
+target_link_libraries(WinFish PRIVATE PopLib OverhaulCore)
 
 # PopLib links BASS through bass.lib, which is an IMPORT library: bass.dll must
 # sit next to the executable at runtime. Everything else (SDL3, OpenAL, curl,
@@ -92,3 +165,8 @@ set_target_properties(WinFish PROPERTIES
 	RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_LIST_DIR}/bin"
 	RUNTIME_OUTPUT_NAME              Insaniquarium
 )
+
+# --- Tests -----------------------------------------------------------------
+if(OVERHAUL_TESTS)
+	add_subdirectory(tests)
+endif()

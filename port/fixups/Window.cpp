@@ -1,5 +1,7 @@
 #include "WinFishApp.h"
 
+#include "overhaul/startup.hpp"
+
 // SDL_main.h renames main() to SDL_main() where the platform needs it. On
 // Android that is essential: SDLActivity loads libmain.so and calls SDL_main;
 // there is no process main(). On desktop it changes nothing.
@@ -25,7 +27,7 @@ static LONG WINAPI WinFishCrashHandler(EXCEPTION_POINTERS *theInfo)
 	if (aLog == nullptr)
 		aLog = stderr;
 
-	fprintf(aLog, "EXCEPCION 0x%08lX en 0x%p\n\n",
+	fprintf(aLog, "EXCEPTION 0x%08lX at 0x%p\n\n",
 			theInfo->ExceptionRecord->ExceptionCode,
 			theInfo->ExceptionRecord->ExceptionAddress);
 
@@ -91,6 +93,11 @@ int main(int argc, char *argv[])
 #ifdef _WIN32
 	SetUnhandledExceptionFilter(WinFishCrashHandler);
 #endif
+
+	// First thing after the crash handler is installed: a log or a bug report
+	// must be able to say which build produced it. Nothing may run before this
+	// that could fail.
+	overhaul::LogStartupBanner(argc > 0 ? argv[0] : nullptr);
 
 	WinFishApp *aTheApp = new WinFishApp();
 

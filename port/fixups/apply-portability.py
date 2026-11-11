@@ -2,10 +2,11 @@
 """
 Remove Windows-only code from the game for the Android and Linux builds.
 
-Where a portable equivalent exists it is used instead, which is better code and
-works just as well on Windows. #ifdef _WIN32 is reserved for what is genuinely
-Windows-specific and meaningless elsewhere, such as registering the screensaver
-in the registry and in SYSTEM.INI.
+Class: mostly P2 (mechanical). Where a portable equivalent exists it is used
+instead, which changes no behaviour. The few genuinely Windows-only blocks --
+registering the screensaver in the registry and in SYSTEM.INI -- are removed,
+and that removal *is* a behavioural change: it is logged individually and is the
+reason this file must not grow silently.
 
 As in apply-blocks.py, every replacement is verified: if an expected block is
 missing the script says so instead of carrying on.

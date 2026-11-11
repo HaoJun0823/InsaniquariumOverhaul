@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Anadidos propios del PORT, no correcciones al decomp.
+Features added by this port; not fixes to the decompilation.
 
-apply-gamefixes.py repara errores del decompilado y apply-portability.py lo
-traduce a otra plataforma sin cambiar lo que hace. Este archivo es lo tercero:
-funciones que el juego original no tiene y que existen porque se juega en una
-consola con mando.
+Class: P3 (behavioural) -- an addition, not a repair. apply-gamefixes.py repairs
+decompiler errors, apply-portability.py translates to another platform without
+changing behaviour, and this file adds what the original never had.
 
-Va aparte para que la lista de "que le agregamos al juego" sea explicita, y
-para que nadie confunda un anadido con un arreglo.
+Kept separate so the list of "what we added to the game" stays explicit, and so
+nobody mistakes an addition for a fix.
 """
 import sys
 import pathlib

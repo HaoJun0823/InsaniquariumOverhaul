@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 """
-Verifica que exista en disco todo lo que properties/resources.xml referencia.
+Verify that everything referenced by properties/resources.xml exists on disk.
 
-Una copia incompleta del juego no se nota hasta que falla, y algunos casos son
-peores que un mensaje de error: si falta una imagen que Board dibuja, el juego
-CRASHEA en partida, porque Graphics::DrawImageMirror hace theImage->GetWidth()
-sin chequear null.
+An incomplete copy of the game does not show up until something fails, and some
+cases are worse than an error message: if an image that Board draws is missing,
+the game crashes mid-level, because Graphics::DrawImageMirror calls
+theImage->GetWidth() without a null check.
 
-Respeta <SetDefaults path="..."> , que fija el directorio base de cada grupo, y
-distingue <Image> de <Sound> y <Font>: todos usan el atributo path= pero viven
-en carpetas distintas y con extensiones distintas.
+Honours <SetDefaults path="...">, which fixes the base directory of each group,
+and distinguishes <Image> from <Sound> and <Font>: all use the path= attribute
+but live in different folders with different extensions.
 
-Tambien detecta desajustes de MAYUSCULAS: en Windows dan igual, en Android no,
-y son 65 en la copia de GOG.
+Also detects case mismatches: harmless on Windows, fatal on Android, and the GOG
+copy has 65 of them.
 
-Uso:
-    verify-assets.py [raiz] [--fix-case]
+Usage:
+    verify-assets.py [root] [--fix-case]
 
-    --fix-case renombra los archivos a la capitalizacion exacta que pide
-    resources.xml. Se usa sobre la copia de assets del APK, nunca sobre los
-    archivos originales del juego.
+    --fix-case renames files to the exact capitalisation the resource table asks
+    for. Use it on the copied asset tree, never on the original game install.
 """
 import re
 import sys
@@ -187,21 +186,21 @@ def main():
         print(f"  {companions} compañeras de canal alpha renombradas para acompañarlos")
         mismatched = []
     elif mismatched:
-        print(f"  {len(mismatched)} con MAYUSCULAS distintas (fallan en Android, no en Windows):")
+        print(f"  {len(mismatched)} with different capitalisation (fails on Android, not on Windows):")
         for ref, want, real, _kind in mismatched:
-            print(f"    {ref}: pide '{want}', el archivo es '{real}'")
+            print(f"    {ref}: asks for '{want}', the file is '{real}'")
 
     if missing:
         for kind, f in missing:
-            print(f"  FALTA ({kind}): {f}")
-        print(f"  -> {len(missing)} faltante(s). Revisa tu copia del juego:")
-        print("     en GOG Galaxy, 'Verificar / reparar archivos instalados'.")
+            print(f"  MISSING ({kind}): {f}")
+        print(f"  -> {len(missing)} missing. Check your copy of the game:")
+        print("     in GOG Galaxy, 'Verify / repair installed files'.")
         return 1
 
     if mismatched:
         return 1
 
-    print("  ok, todos presentes")
+    print("  ok, all present")
     return 0
 
 

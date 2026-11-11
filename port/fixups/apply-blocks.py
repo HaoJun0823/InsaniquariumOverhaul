@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
-Reemplazos de bloque que sed no puede hacer con seguridad.
-Se ejecuta sobre port/winfish/ despues de las reglas de sed.
-Preserves CRLF (opened in binary mode and handled as bytes).
-Idempotente y verificable: si un bloque esperado no aparece, avisa y sale != 0.
+Block replacements that sed cannot express safely.
+
+Runs over port/winfish/ after the sed rules in port.sh.
+
+Class: P2 (mechanical). Every replacement here must be meaning-preserving: this
+is a translation to another framework, not a change of behaviour. A fix that
+changes what the game does belongs in apply-gamefixes.py, and a feature that the
+original never had belongs in apply-portfeatures.py.
+
+Preserves CRLF (opened in binary mode and handled as bytes). Idempotent and
+verifiable: if an expected block is missing the script says so and exits != 0.
 """
 import sys, pathlib
 

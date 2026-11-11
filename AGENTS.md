@@ -8,6 +8,11 @@ human must personally approve.
 If the code and this document disagree, stop and resolve the conflict
 deliberately. Never edit this file to match an accidental implementation.
 
+**Companion document:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). This file
+says *how* a change is delivered; that one says *where it belongs*. The change
+model in its §4 (pin / mechanical / behavioural / own code) is normative and is
+enforced by review.
+
 ---
 
 ## 0. TL;DR
@@ -42,22 +47,39 @@ Current state (2026-11-11):
 
 - L1 presentation (640×480 logical canvas + SDL letterbox) and TTF fonts: done.
 - Windows x64 build, link, and headless UI regression: passing.
+- `OverhaulCore` static library with unit tests (`ctest`) and a startup banner
+  carrying build identity: done (stage S1).
+- Change model (pin / mechanical / behavioural / own code): documented in
+  `docs/ARCHITECTURE.md`, not yet fully enforced — S2/S3 pending.
 - L2/L3, string extraction, Linux/macOS: not started.
 - Open defects: see §13.
 
 ---
 
-## 2. Architecture: three layers, one writable layer
+## 2. Architecture: four change classes, one writable layer
 
-| Layer | Path | Mutability | Purpose |
-|---|---|---|---|
-| Upstream game | `external/winfish` | **read-only** submodule | Decompiled game logic (Model/Controller) |
-| Upstream framework | `external/poplib` | **read-only** submodule | SDL3/OpenAL framework (View/infrastructure) |
-| PopLib fixes | `port/patches/poplib/*.patch` | writable | Reviewed fixes applied to the PopLib work tree |
-| Game fixes | `port/fixups/*.py`, `port/port.sh` | writable | Derivation rules for WinFish |
-| Derived game source | `port/winfish/` | **generated, gitignored** | Buildable copy produced by `port.sh` |
-| Runtime directory | `port/bin/` | **generated, gitignored** | exe + assets, the only valid working directory |
-| Build scripts | `port/*.py`, `port/*.sh`, `port/*.bat` | writable | Tooling |
+Every change belongs to exactly one class. The class fixes the mechanism; see
+`docs/ARCHITECTURE.md` §4 for the full model and the reasoning.
+
+| Class | Layer | Path | Mutability | Purpose |
+|---|---|---|---|---|
+| **P1** | Upstream game | `external/winfish` | **read-only** submodule | Decompiled game logic (Model/Controller) |
+| **P1** | Upstream framework | `external/poplib` | **read-only** submodule | SDL3/OpenAL framework (View/platform) |
+| **P3** | PopLib fixes | `port/patches/poplib/*.patch` | writable | Reviewed diffs applied to the PopLib work tree |
+| **P3** | Whole-file overlay | `port/fixups/Window.cpp` | writable | Replaces an upstream file outright (entry point + crash handler) |
+| **P2** | Mechanical derivation | `port/fixups/*.py`, `port/port.sh` | writable | Renames, include rewrites, platform-API removal |
+| **P4** | Our C++ | `port/src/overhaul/` | writable | New functionality, compiled and unit tested |
+| **P4** | Unit tests | `port/tests/` | writable | `ctest`; no SDL, no window |
+| **—** | Derived game source | `port/winfish/` | **generated, gitignored** | Buildable copy produced by `port.sh` |
+| **—** | Runtime directory | `port/bin/` | **generated, gitignored** | exe + assets, the only valid working directory |
+| **—** | Tooling | `port/tools/`, `port/*.py`, `*.sh`, `*.bat` | writable | One CLI in front of the scripts |
+
+The `port/fixups/*.py` scripts are **legacy-mixed**: they contain both P2
+mechanical rules and P3 behavioural fixes, in four overlapping files. Splitting
+them along this table is migration stage S3 (`docs/ARCHITECTURE.md` §12). Until
+then, a new edit must at least stay in the file whose stated purpose matches:
+`apply-gamefixes.py` = behaviour, `apply-portability.py` / `apply-blocks.py` /
+`apply-portfeatures.py` = mechanism.
 
 ### Non-negotiable rules
 
@@ -71,90 +93,115 @@ Current state (2026-11-11):
 - **R4.** `port/bin/` is runtime output. It is never a source of truth.
 - **R5.** A change that survives only until the next derive is in the wrong
   place. If `bash port/port.sh` erases it, it was not a real change.
+- **R6.** **A behavioural change must never be expressed as a mechanical rule.**
+  `sed 's/!mPlayingDemoBuffer/true/g'` is a redesign wearing a rename's clothes.
+  If it changes what the program does, it is P3: an overlay file or a patch with
+  a readable diff.
+- **R7.** **A new feature must never be expressed as text appended to an upstream
+  file.** It goes in `port/src/` with tests. That library exists precisely so
+  this choice is available.
+- **R8.** A patch under `port/patches/` must not call into `port/src/`. It would
+  invert the dependency and make the patch impossible to offer upstream.
 
 ---
 
 ## 3. Source-of-truth map
 
-| You want to change | Edit this | Then regenerate with |
-|---|---|---|
-| PopLib behavior / build | `port/make-patches.py` (`EDITS`, `HELPER`, `CAPTURE_FUNC`) | `make-patches.py` → `apply-patches.py` |
-| Game behavior (bugs, port features) | `port/fixups/apply-gamefixes.py`, `apply-portfeatures.py`, `apply-blocks.py`, `apply-portability.py` | `bash port/port.sh` |
-| CMake / targets / output name | `CMakeLists.txt`, `port/CMakeLists.txt` | `port\build-windows.bat` |
-| Resource table / TTF mapping | `port/make-resources.py` | rerun the script |
-| Font preparation | `port/prepare-font.py` | rerun the script |
-| Asset layout | `port/copy-assets.sh` | rerun the script |
-| UI / i18n design | `docs/UI-I18N-DESIGN.md` | — |
-| Automated UI verification | `port/run-capture-test.py` | — |
+Ask "which class is this change?" first (`docs/ARCHITECTURE.md` §11), then use
+this table to find the file.
+
+| You want to change | Class | Edit this | Then regenerate with |
+|---|---|---|---|
+| New functionality, pure logic | **P4** | `port/src/overhaul/` + `port/tests/` | `overhaul.py build`, `ctest` |
+| Entry point / crash handler | **P3** | `port/fixups/Window.cpp` (whole-file overlay) | `overhaul.py derive` |
+| PopLib behavior / build | **P3** | `port/make-patches.py` (`EDITS`, `HELPER`, `CAPTURE_FUNC`) | `overhaul.py patch --regenerate` |
+| Game behaviour (bugs, port features) | **P3** | `port/fixups/apply-gamefixes.py` | `overhaul.py derive` |
+| Mechanical renames / includes / platform API | **P2** | `port/port.sh`, `apply-portability.py`, `apply-blocks.py`, `port/include-map.txt` | `overhaul.py derive` |
+| CMake / targets / output name | — | `CMakeLists.txt`, `port/CMakeLists.txt` | `overhaul.py build` |
+| Resource table / TTF mapping | — | `port/make-resources.py` | rerun the script |
+| Font preparation | — | `port/prepare-font.py` | rerun the script |
+| Asset layout | — | `port/copy-assets.sh` | `overhaul.py assets <retail-dir>` |
+| UI / i18n design decisions | — | `docs/ARCHITECTURE.md` §9–§10, `docs/UI-I18N-DESIGN.md` | — |
+| Verification scenarios | — | `port/run-capture-test.py` | — |
+
+If a change does not fit any row, the model is incomplete: update
+`docs/ARCHITECTURE.md` §11 first. Do not invent a new mechanism.
 
 ---
 
 ## 4. Repository map
 
 ```text
-CMakeLists.txt               top-level options + add_subdirectory(port)
+CMakeLists.txt               THE build entry: version, four pillar options,
+                             include(CTest), add_subdirectory(port)
 LICENSE                      AGPL-3.0
 README.md                    user-facing entry point (see §11)
 THIRD-PARTY-NOTICES.md       dependency attribution
 AGENTS.md                    this contract
-docs/UI-I18N-DESIGN.md       UI modernization + TTF design decisions
-external/winfish             decompiled game (pinned submodule)
-external/poplib              cross-platform framework (pinned submodule)
+docs/ARCHITECTURE.md         change model, layering, target layout, migration
+docs/UI-I18N-DESIGN.md       UI modernization + TTF design decisions (legacy)
+external/winfish             decompiled game (pinned submodule, read-only)
+external/poplib              cross-platform framework (pinned submodule, read-only)
+port/CMakeLists.txt          OverhaulCore + WinFish + tests
+port/src/overhaul/           OUR C++ (P4): buildinfo, env, log, startup
+port/tests/                  unit tests, no SDL, ctest
+port/tools/overhaul.py       single entry point for every command
 port/port.sh                 derive buildable WinFish from the pristine decomp
 port/make-patches.py         generate reviewed PopLib patches from pristine
 port/apply-patches.py        apply/revert/check the patch set (idempotent)
 port/init-deps.py            materialize pinned nested submodules
-port/build-windows.bat       MSVC x64 + Ninja build
+port/build-windows.bat       MSVC x64 + Ninja build (configures the repo root)
 port/prepare-font.py         copy/validate the UI font
 port/make-resources.py       rewrite resources.xml to strict XML + TTF
 port/copy-assets.sh          copy retail assets, properties, default.xml
 port/verify-assets.py        verify every referenced resource exists
-port/run-capture-test.py     deterministic headless UI regression
-port/fixups/                 WinFish derivation rules and game fixes
+port/run-capture-test.py     deterministic headless/desktop UI regression
+port/fixups/                 WinFish derivation rules, game fixes, Window.cpp overlay
 port/patches/poplib/         generated unified diffs (the only PopLib edits)
 port/winfish/                generated, gitignored
 port/bin/                    runtime, gitignored
 ```
 
+The build configures the **repository root**. Configuring `port/` directly used
+to bypass the root `CMakeLists.txt`, which silently disabled the four pillar
+options, the project version, and `include(CTest)`. Do not reintroduce `-S port`.
+
 ---
 
 ## 5. Mandatory development loop
 
-Run the steps that apply, **in this order**. Do not skip step 6 for UI changes.
+Run the steps that apply, **in this order**. Do not skip step 5 for UI changes.
 
 ```bash
-# 0. Dependencies
-python port/init-deps.py --check
+# 0. Is the tree healthy?
+python port/tools/overhaul.py doctor
 
-# 1. Edit the source of truth (never external/, never port/winfish/)
+# 1. Edit the source of truth (§3). Never external/, never port/winfish/.
 
-# 2. PopLib patch changed:
-python port/apply-patches.py --revert
-python port/make-patches.py
-python port/apply-patches.py
+# 2. PopLib patch changed
+python port/tools/overhaul.py patch --regenerate
 
-# 3. WinFish fixup changed:
-bash port/port.sh
+# 3. WinFish rules or the entry point changed
+python port/tools/overhaul.py derive
 
-# 4. Build
-port\build-windows.bat
-# In restricted sandboxes where vcvarsall/reg.exe is blocked:
-#   PowerShell: $env:OVERHAUL_NO_VCVARS = "1"
-#   cmd:        set OVERHAUL_NO_VCVARS=1
+# 4. Build + unit tests
+python port/tools/overhaul.py build
+# In restricted sandboxes where vcvarsall/reg.exe is blocked, set
+# OVERHAUL_NO_VCVARS=1 before running; the build script then sets INCLUDE/LIB/PATH
+# itself.
 
 # 5. Deterministic UI regression
-python port/run-capture-test.py
+python port/tools/overhaul.py test
 
 # 6. Desktop smoke test — REQUIRED for rendering, windowing, input, or audio
-python port/run-capture-test.py --driver desktop --only default --seconds 15
-#    Or run port/bin/Insaniquarium.exe directly with the real video driver.
-#    Record: duration, exit code, crash.txt presence, last exported frame.
+python port/tools/overhaul.py test --driver desktop --only default --seconds 15
 
 # 7. Documentation + commit (see §6 and §10)
 ```
 
-`port\build-windows.bat` already runs `init-deps.py` and `apply-patches.py`.
-Re-running it is safe and is the supported way to build.
+`overhaul.py build` already runs `init-deps.py` and `apply-patches.py` (through
+`build-windows.bat`). Re-running it is safe and is the supported way to build.
+`overhaul.py all` runs the whole chain in order.
 
 ---
 
@@ -163,9 +210,9 @@ Re-running it is safe and is the supported way to build.
 A change is done only when **all** applicable boxes are checked, with artifacts:
 
 - [ ] Build exits `0`; the exe is newer than the changed sources.
-- [ ] `python port/apply-patches.py --check` → `nothing changed`.
-- [ ] `python port/init-deps.py --check` → all pinned commits OK.
-- [ ] `python port/verify-assets.py` → all referenced resources present.
+- [ ] `ctest` green for `OverhaulCore` (required when `port/src/` changed).
+- [ ] `overhaul.py doctor` → `all checks passed`.
+- [ ] The change is in the class its file declares (§2 R6–R8).
 - [ ] `python port/run-capture-test.py` → `RESULT: OK`.
 - [ ] No `port/bin/crash.txt` after the run.
 - [ ] UI change: before/after frames exported, both from a fresh isolated
@@ -344,36 +391,46 @@ Human reviewer checklist:
 | P1 | `ui.ttf` is a local copy of a system font. | Replace with an OFL font before any release. |
 | P1 | L2/L3, string extraction, Linux/macOS. | See §12. |
 | P2 | Two legacy FishSongMgr fixups were reporting false `[FAILED]` because upstream already contains the fix. | Anchors corrected; the derive log is now clean. |
+| P2 | The four `port/fixups/*.py` scripts mix mechanical rules and behavioural fixes, and three of them are documented in Spanish. | Stage S3 in `docs/ARCHITECTURE.md` §12. Until then, new edits must stay in the file whose stated purpose matches the class. |
+
+Resolved in stage S1 (2026-11-11): the build configured `port/` instead of the
+repository root, so the root `CMakeLists.txt` — four pillar options, project
+version, `include(CTest)` — was dead code and the exe reported PopLib's version.
+Fixed in `port/build-windows.bat` (`-S "%ROOT%"`). Every run now also logs build
+identity, so a crash report finally carries the commit, configuration, and
+architecture it came from.
 
 ---
 
 ## 14. Command cheat sheet
 
+One entry point. The verbs delegate to the script that owns each concern, so
+these commands stay stable even when the scripts move.
+
 ```bash
-# dependencies
-python port/init-deps.py --check
+python port/tools/overhaul.py doctor      # read-only health check
+python port/tools/overhaul.py deps --fix  # materialise pinned nested submodules
+python port/tools/overhaul.py patch --check
+python port/tools/overhaul.py patch --regenerate
+python port/tools/overhaul.py derive
+python port/tools/overhaul.py build
+python port/tools/overhaul.py test
+python port/tools/overhaul.py test --driver desktop --only default --seconds 15
+python port/tools/overhaul.py assets "<RETAIL_DIR>"
+python port/tools/overhaul.py all         # the full chain, in order
+```
 
-# PopLib patch set
-python port/apply-patches.py --check
-python port/apply-patches.py --revert
-python port/make-patches.py
-python port/apply-patches.py
+Unit tests only (fast, no SDL, no build of the game):
 
-# derive WinFish
-bash port/port.sh
+```bash
+ctest --test-dir build/game --output-on-failure
+# or, if ctest is not on PATH, run build/game/tests/bin/overhaul_tests.exe
+```
 
-# build
-port\build-windows.bat
+Run the game (working directory matters: it resolves `properties/` relative to
+the exe):
 
-# deterministic UI regression (3 scenarios, isolated profiles)
-python port/run-capture-test.py
-python port/run-capture-test.py --only force
-
-# assets
-bash port/copy-assets.sh "<RETAIL_DIR>"
-python port/verify-assets.py
-
-# run (working directory matters)
+```bash
 cd port/bin && ./Insaniquarium.exe
 ```
 
@@ -388,6 +445,11 @@ Useful environment variables:
 | `OVERHAUL_CAPTURE_MAX` | cap on sampled frames |
 | `OVERHAUL_CAPTURE_DIR` | capture output directory |
 | `OVERHAUL_UPDATE_DIALOG` | `legacy` or `force`; unset disables the dead update prompt |
+| `OVERHAUL_LOG_FILE` | mirror diagnostics into a file (double-click launches) |
+
+Every switch that is set is echoed in the startup banner, so a log always
+explains its own run. A new switch must be added to
+`port/src/overhaul/startup.cpp` (`kReportedSwitches`) or it will not appear.
 
 ---
 

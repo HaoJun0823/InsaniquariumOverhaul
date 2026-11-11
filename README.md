@@ -1,6 +1,8 @@
 # InsaniquariumOverhaul
 
 > **Development contract:** [AGENTS.md](AGENTS.md) — English. AI agents implement; humans review.
+> **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — change model, layering, target layout.
+> **One command:** `python port/tools/overhaul.py doctor` checks the whole tree; `--help` lists every verb.
 > **Documentation language:** all new documents are written in English. This README and
 > `docs/UI-I18N-DESIGN.md` are legacy Chinese documents, migrated when substantially edited.
 > **Open defects:** see [AGENTS.md §13](AGENTS.md#13-known-issues-2026-11-11).

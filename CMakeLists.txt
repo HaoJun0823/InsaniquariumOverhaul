@@ -13,6 +13,15 @@ option(OVERHAUL_UI      "Modern, resolution-independent UI (replaces 4:3 bitmaps
 option(OVERHAUL_HD      "High-resolution / integer-scaled rendering"              ON)
 option(OVERHAUL_COMPAT  "Modern-system compatibility fixes"                     ON)
 
+# Tests for the code we own (port/src). enable_testing() must be called at the
+# top level for ctest to discover tests declared in subdirectories.
+#
+# include(CTest) is deliberately NOT used: it defines BUILD_TESTING, and that
+# switch would then also enable the test suites of every third-party subproject
+# (zlib, tinyxml2, PopLib), which `ctest` reports as "Not Run" and fails on.
+# port/CMakeLists.txt owns the OVERHAUL_TESTS switch instead.
+enable_testing()
+
 # external/winfish and external/poplib are read-only submodules. They are NOT
 # add_subdirectory'd here; port/CMakeLists.txt pulls in PopLib, and port/port.sh
 # derives the buildable game sources from the pristine decompilation.

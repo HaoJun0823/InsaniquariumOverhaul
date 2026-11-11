@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Correcciones a BUGS DEL JUEGO encontrados en el decomp.
+Behavioural fixes for bugs in the decompilation.
 
-Esto es distinto de apply-blocks.py y apply-portability.py: aquellos traducen el
-codigo a otra plataforma sin cambiar comportamiento; este SI cambia lo que hace
-el juego, porque el decomp tiene errores respecto del original.
+Class: P3 (behavioural). Unlike apply-blocks.py and apply-portability.py, which
+translate the code to another framework without changing what it does, this file
+*does* change behaviour, because the decomp is wrong compared with the original.
 
-Se mantiene aparte a proposito, para que la lista de "que le arreglamos al
-decomp" sea explicita y revisable -- y eventualmente mandable upstream.
+Kept separate on purpose, so the list of "what we fixed in the decomp" stays
+explicit and reviewable -- and can eventually be offered upstream.
 
-Cada arreglo lleva: sintoma observado, causa, y por que la correccion es la
-correcta.
+Every fix carries: observed symptom, cause, and why the correction is the
+correct one.
 """
 import sys
 import pathlib
