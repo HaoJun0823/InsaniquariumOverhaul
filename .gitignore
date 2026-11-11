@@ -1,0 +1,6 @@
+build/
+port/generated/
+out/
+cmake-build-*/
+*.user
+.vs/

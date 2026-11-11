@@ -1,0 +1,7 @@
+[submodule "external/winfish"]
+	path = external/winfish
+	url = https://github.com/HaoJun0823/WinFishCN
+[submodule "external/poplib"]
+	path = external/poplib
+	url = https://github.com/teampopwork/poplib
+	branch = master
