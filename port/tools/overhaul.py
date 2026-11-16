@@ -51,8 +51,8 @@ class Failure(Exception):
     pass
 
 
-def say(message=""):
-    print(message, flush=True)
+def say(message="", file=None):
+    print(message, file=file or sys.stdout, flush=True)
 
 
 def run(command, cwd=ROOT, capture=False, required=True):

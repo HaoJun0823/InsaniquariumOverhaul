@@ -10,7 +10,48 @@
  
  using namespace PopLib;
  
-@@ -198,12 +199,21 @@
+@@ -26,6 +27,7 @@
+ 				 bool bold, bool italics, bool underline)
+ {
+ 	mApp = theApp;
++	mRefCount = new int(1);
+ 	SDL_IOStream *io = SDL_IOFromConstMem((void *)aData, aDataSize);
+ 	if (!io)
+ 	{
+@@ -54,6 +56,7 @@
+ 				   bool italics, bool underline, bool useDevCaps)
+ {
+ 	mApp = theApp;
++	mRefCount = new int(1);
+ 
+ 	mTTFFont = TTF_OpenFont(theFace.c_str(), thePointSize);
+ 	if (!mTTFFont)
+@@ -74,6 +77,8 @@
+ SysFont::SysFont(const SysFont &theSysFont)
+ {
+ 	mTTFFont = theSysFont.mTTFFont;
++	mRefCount = theSysFont.mRefCount;
++	++(*mRefCount);
+ 	mApp = theSysFont.mApp;
+ 	mHeight = theSysFont.mHeight;
+ 	mAscent = theSysFont.mAscent;
+@@ -84,7 +89,14 @@
+ 
+ SysFont::~SysFont()
+ {
+-	TTF_CloseFont(mTTFFont);
++	if (mRefCount != nullptr && --(*mRefCount) == 0)
++	{
++		if (mTTFFont != nullptr)
++			TTF_CloseFont(mTTFFont);
++		delete mRefCount;
++	}
++	mTTFFont = nullptr;
++	mRefCount = nullptr;
+ }
+ 
+ ImageFont *SysFont::CreateImageFont()
+@@ -198,12 +210,21 @@
  		TTF_RenderText_Blended(mTTFFont, theString.c_str(), 0, aColor);
  	if (!textSurface)
  	{
@@ -34,7 +75,7 @@
  	SDL_FRect srcRect = {0, 0, dstRect.w, dstRect.h};
  	SDL_DestroySurface(textSurface);
  
-@@ -215,7 +225,7 @@
+@@ -215,7 +236,7 @@
  
  	if (mDrawShadow)
  	{

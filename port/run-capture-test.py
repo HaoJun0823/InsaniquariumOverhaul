@@ -41,6 +41,16 @@ exported frame and whether crash.txt exists.
 The game is expected to still be running when the timeout fires; that is a
 successful run, not a crash. A real crash is signalled by an early non-zero
 exit or by port/bin/crash.txt.
+
+Functional scenarios
+--------------------
+Besides the three static scenarios above, ``newuser`` and ``play`` inject
+scripted REAL SDL input (via OVERHAUL_INPUT_SCRIPT) to walk the UI state
+machine: title -> PLAY -> new-user dialog -> GameSelector -> Help -> Board.
+Each scenario declares an ``expect_widget``; the manifest records the widget
+classes seen in the state trace, and the run fails if the expected screen is
+never reached. This is what makes "clicking PLAY crashes" a reproducible,
+automated test instead of a hand-written bug report.
 """
 import argparse
 import hashlib
@@ -60,14 +70,35 @@ OUT = ROOT / "build" / "ui-regression"
 # Frame numbers cover loading, the title screen and the settled state.
 FRAMES = "1,30,60,90,120,180,240"
 
+# One scripted click stream = one user journey. Frames are AppBase update
+# counts; each step waits ~30 frames so the previous screen settles first.
+CLICK_PLAY = "100:click:240,427"
+NEW_USER_FLOW = (
+    "100:click:240,427;"     # title -> GameSelector (+ NewUserDialog)
+    "130:text:Tester;"       # type a player name into the focused edit box
+    "160:click:230,285"      # OK -> close dialog, profile created
+)
+PLAY_FLOW = (
+    NEW_USER_FLOW + ";"
+    "220:click:465,81;"      # Adventure button -> Help screen (first play)
+    "280:click:320,427"      # Continue -> Board (the actual level)
+)
+
+# scenario -> (extra env, expected widget class substring in the state trace)
 SCENARIOS = {
     # Normal play: the dead check-for-updates prompt must NOT appear.
-    "default": {},
+    "default": ({}, None),
     # Regression guard for the dialog renderer: force the modal so we can see
     # that its header/body/button labels are drawn inside the box.
-    "force": {"OVERHAUL_UPDATE_DIALOG": "force"},
+    "force": ({"OVERHAUL_UPDATE_DIALOG": "force"}, None),
     # Reproduce the original first-run condition (fresh profile => prompt).
-    "legacy": {"OVERHAUL_UPDATE_DIALOG": "legacy"},
+    "legacy": ({"OVERHAUL_UPDATE_DIALOG": "legacy"}, None),
+    # Click PLAY on a fresh profile: used to crash in NewUserDialog because
+    # SysFont::Duplicate() shared a TTF_Font* that a destroyed copy closed.
+    "newuser": ({"OVERHAUL_INPUT_SCRIPT": CLICK_PLAY}, "NewUserDialog"),
+    # Walk all the way into a live board: title -> user -> selector -> help
+    # -> tank. Proves the whole "enter game" path, not just the first dialog.
+    "play": ({"OVERHAUL_INPUT_SCRIPT": PLAY_FLOW}, "Board"),
 }
 
 
@@ -89,11 +120,13 @@ def bmp_info(path):
     }
 
 
-def run_scenario(name, extra_env, seconds, driver):
+def run_scenario(name, spec, seconds, driver):
+    extra_env, expect_widget = spec
     label = name if driver == "headless" else f"{name}-{driver}"
     work = OUT / label
     profile = work / "profile"
     captures = work / "frames"
+    trace_path = work / "state.ndjson"
 
     # Only ever remove directories inside build/ui-regression. The player's
     # real %LOCALAPPDATA% profile is never touched.
@@ -115,6 +148,9 @@ def run_scenario(name, extra_env, seconds, driver):
         "OVERHAUL_CAPTURE_EVERY": "60",
         "OVERHAUL_CAPTURE_MAX": "10",
         "OVERHAUL_CAPTURE_DIR": captures.as_posix(),
+        "OVERHAUL_STATE_FILE": trace_path.as_posix(),
+        "OVERHAUL_STATE_EVERY": "10",
+        "OVERHAUL_STATE_LAST": (work / "state-last.json").as_posix(),
     })
     env.update(extra_env)
 
@@ -147,6 +183,25 @@ def run_scenario(name, extra_env, seconds, driver):
     frames = [bmp_info(p) for p in frame_files]
     crash = BIN / "crash.txt"
 
+    # Collect the distinct widget classes the UI passed through. This is the
+    # state-machine evidence: "play" must reach Board, "newuser" must reach
+    # NewUserDialog. A scenario that exits early never gets there.
+    widgets_seen = set()
+    trace_samples = 0
+    if trace_path.exists():
+        for line in trace_path.read_text(encoding="utf-8",
+                                         errors="replace").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            trace_samples += 1
+            for entry in record.get("widgets", "").split("|"):
+                if "::" in entry:
+                    widgets_seen.add(entry.rsplit("::", 1)[-1].strip())
+                elif entry.strip():
+                    widgets_seen.add(entry.strip())
+
     manifest = {
         "scenario": name,
         "label": label,
@@ -165,6 +220,10 @@ def run_scenario(name, extra_env, seconds, driver):
         "registry_path": str(registry_path) if registry_path else None,
         "registry": registry,
         "crash_txt": str(crash) if crash.exists() else None,
+        "state_trace": str(trace_path) if trace_path.exists() else None,
+        "state_samples": trace_samples,
+        "expect_widget": expect_widget,
+        "widgets_seen": sorted(widgets_seen),
         "last_frame": frames[-1]["name"] if frames else None,
         "frames": frames,
         "stderr_tail": err_text.splitlines()[-25:],
@@ -178,6 +237,10 @@ def run_scenario(name, extra_env, seconds, driver):
         problems.append(f"process exited early with {proc.returncode}")
     if crash.exists():
         problems.append("crash.txt exists")
+    if expect_widget and expect_widget not in widgets_seen:
+        problems.append(
+            f"never reached expected widget {expect_widget!r} "
+            f"(saw: {sorted(widgets_seen)})")
     if not frames:
         problems.append("no frames exported")
     for f in frames:
@@ -187,6 +250,8 @@ def run_scenario(name, extra_env, seconds, driver):
             problems.append(f"{f['name']}: blank or uniform frame")
 
     print(f"[{label}] driver={driver} frames={len(frames)} "
+          f"widgets={len(widgets_seen)} "
+          f"expect={expect_widget or '-'} "
           f"registry_keys={len(registry) if isinstance(registry, dict) else 0} "
           f"timeout_ok={timed_out} returncode={proc.returncode} "
           f"problems={len(problems)}")
@@ -211,10 +276,16 @@ def main():
         return 1
     OUT.mkdir(parents=True, exist_ok=True)
 
+    # Scripted journeys need more frames to reach their target screen than a
+    # static title capture. Give them a floor regardless of --seconds.
+    min_seconds = {"newuser": 14, "play": 24}
     names = list(SCENARIOS) if args.only == "all" else [args.only]
     ok = True
     for name in names:
-        ok &= run_scenario(name, SCENARIOS[name], args.seconds, args.driver)
+        seconds = max(args.seconds, min_seconds.get(name, 0))
+        if args.driver == "desktop":
+            seconds = max(seconds, 30 if name == "play" else 20)
+        ok &= run_scenario(name, SCENARIOS[name], seconds, args.driver)
 
     print("\nRESULT:", "OK" if ok else "FAILED")
     print("All captures used a freshly created, isolated profile; see each "

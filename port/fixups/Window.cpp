@@ -110,6 +110,9 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	// No catch-all here on purpose: an escaping C++ exception must terminate
+	// with a non-zero exit so the headless harness records it as a failure.
+	// Hard crashes are captured by the SEH handler above (crash.txt).
 	aTheApp->Init();
 	aTheApp->Start();
 	aTheApp->Shutdown();

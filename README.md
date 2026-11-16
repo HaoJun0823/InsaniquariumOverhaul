@@ -5,7 +5,7 @@
 > **One command:** `python port/tools/overhaul.py doctor` checks the whole tree; `--help` lists every verb.
 > **Documentation language:** all new documents are written in English. This README and
 > `docs/UI-I18N-DESIGN.md` are legacy Chinese documents, migrated when substantially edited.
-> **Open defects:** see [AGENTS.md §13](AGENTS.md#13-known-issues-2026-11-11).
+> **Open defects:** see [AGENTS.md §13](AGENTS.md#13-known-issues-2026-11-16).
 
 Insaniquarium Deluxe 的**大修工程**：在反编译源码与社区跨平台框架之上，实现四大支柱——
 
@@ -110,20 +110,22 @@ cd port/bin && Insaniquarium.exe
 > 不查注册表、不触发被禁用程序。补丁只改 `external/poplib` 的**工作树**，
 > 父仓库 gitlink 不变；上游更新后重跑 `port/make-patches.py` 重新生成即可。
 
-### 构建状态（实测 2026-11-11，Windows x64 / MSVC 19.51）
+### 构建状态（实测 2026-11-16，Windows x64 / MSVC 19.51）
 
 | 项 | 状态 |
 |---|---|
 | 工具链（CMake 4.3.1 + Ninja + MSVC 19.51） | ✅ 满足 poplib 3.26 要求 |
 | **嵌套依赖（13 个 gitlink）** | ✅ `init-deps.py --check` 全部 OK；`discordrpc` 404 由补丁的 `if(EXISTS)` 守卫绕过 |
 | **派生链路 `port.sh`** | ✅ 153 源文件 → 40 条 include 规则 → 150 文件重写 → 151 派生产物 |
-| **上游补丁集（不 fork）** | ✅ 7 个补丁文件干净应用、幂等验证通过（含自动帧导出与坐标变换修复） |
+| **上游补丁集（不 fork）** | ✅ 补丁集干净应用、幂等验证通过（含帧导出、坐标变换、输入注入、状态探针、SysFont 引用计数） |
 | **TTF 资源表** | ✅ 15 个字体 → `!sys:`，严格 XML 校验通过（339 元素） |
 | **资产铺设 + 资源校验** | ✅ 45M 资产 + TTF 表 + 字体 + `default.xml`；**328 个引用全部齐全** |
 | **CMake configure** | ✅ 生成 `build.ninja`，1565 条 build 边 |
 | **完整编译 + 链接** | ✅ **exit 0**，`port/bin/Insaniquarium.exe` 9.5 MB（仅少量无害 warning） |
 | **启动验证（headless，15 s）** | ✅ 资源加载成功、无崩溃、0 警告；exe 仅依赖系统 DLL + `bass.dll` |
-| **确定性 UI 回归（3 场景 × 7 帧）** | ✅ `python port/run-capture-test.py` 全绿；隔离 profile + manifest，逐帧可复现 |
+| **确定性 UI 回归（5 场景）** | ✅ `python port/run-capture-test.py` 全绿；隔离 profile + manifest + 状态轨迹，逐帧可复现 |
+| **点击 PLAY 崩溃修复** | ✅ `SysFont` 浅拷贝 TTF 指针致重复释放；加引用计数后 `newuser` / `play` 两场景进入关卡、无 `crash.txt` |
+| **单元测试 + doctor** | ✅ `ctest` 1/1 通过；`overhaul.py doctor` 全部检查通过 |
 
 本轮修掉的上游/移植问题：官库 `alldemos` 目标不存在导致 configure 失败、
 嵌套子模块浅克隆漂移、PopCap XML 的裸属性与私有实体 `&cr;`/`&nbsp;`、
@@ -153,23 +155,35 @@ poplib 把全部持久化状态放在 `%LOCALAPPDATA%`，而 `ShouldCheckForUpda
 2. **失效的 PopCap 更新询问框**：其服务器早已下线，且 `InProgress: 1`
    （进程被强杀残留）会在下次启动时把它唤起。现已默认关闭，仅保留
    `OVERHAUL_UPDATE_DIALOG=legacy|force` 供回归测试复现。
+3. **`SysFont::Duplicate()` 浅拷贝 `TTF_Font*`**（点击 PLAY 崩溃的真正根因）：
+   进入 `NewUserDialog` 时多个字体副本析构，重复 `TTF_CloseFont` 同一指针，
+   堆被破坏、进程以 127 退出，且没有任何 C++ 异常或 `crash.txt`。
+   现改为共享 `int *mRefCount`，引用归零才关闭字体。
 
 现在验证是确定性的：
 
 ```bash
-python port/run-capture-test.py                 # default / force / legacy 三场景
+python port/run-capture-test.py                 # 全部 5 场景
 python port/run-capture-test.py --only force    # 只跑对话框渲染回归
+python port/run-capture-test.py --only play     # 只跑完整进入关卡路径
 ```
 
 脚本每次**重建一个隔离的全新 profile**（`OVERHAUL_USER_DATA_DIR`，只写在
 `build/ui-regression/` 下，绝不碰玩家真实数据），用 headless 帧导出拿画面，
 并把环境变量、`registry.json` 快照、每帧尺寸与 MD5 写进 `manifest.json`。
 
-| 场景 | 开关 | 期望画面 |
+| 场景 | 开关 / 输入脚本 | 期望 |
 |---|---|---|
 | `default` | 无 | 干净的 `CLICK HERE TO PLAY!` 标题界面，**无更新弹窗** |
 | `force` | `OVERHAUL_UPDATE_DIALOG=force` | 更新询问框显示，且标题/正文/YES·NO **都在框内** |
 | `legacy` | `OVERHAUL_UPDATE_DIALOG=legacy` | 复刻原 `ShouldCheckForUpdate()` 分支 |
+| `newuser` | `OVERHAUL_INPUT_SCRIPT=100:click:240,427` | 点击 PLAY 到达 `NewUserDialog`，**不崩溃** |
+| `play` | 完整 `PLAY_FLOW`（点击 + 输入名字 + OK + Adventure + Continue） | 一路进入 `Board`，场上出现 `Fish`/`MessageWidget` |
+
+`newuser` / `play` 用 `OVERHAUL_INPUT_SCRIPT` 注入**真实 SDL 事件**，走正常事件泵和
+widget 处理路径（不是测试专用后门）。`OVERHAUL_STATE_FILE` 记录每帧的 widget 集合，
+manifest 的 `expect_widget` 字段声明该场景必须到达的界面；没到达或产生 `crash.txt`
+即判失败。这正是把「点击 PLAY 崩溃」变成一条可复现自动测试的做法。
 
 帧导出由 `sdlinterface.cpp` 补丁的 `OVERHAUL_CAPTURE_*` 提供，不设变量时零开销；
 `force` 场景专门守着 `SysFont` 坐标修复，避免以后换字体或改布局时又把

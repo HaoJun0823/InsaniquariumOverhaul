@@ -43,12 +43,15 @@ Four pillars, in priority order:
 
 License: **AGPL-3.0**. Retail assets and font binaries are never distributed.
 
-Current state (2026-11-11):
+Current state (2026-11-16):
 
 - L1 presentation (640×480 logical canvas + SDL letterbox) and TTF fonts: done.
 - Windows x64 build, link, and headless UI regression: passing.
 - `OverhaulCore` static library with unit tests (`ctest`) and a startup banner
   carrying build identity: done (stage S1).
+- Headless input injection + UI state trace: done. Five deterministic scenarios
+  cover the title, update dialogs, new-user dialog and the full entry path into
+  a live board.
 - Change model (pin / mechanical / behavioural / own code): documented in
   `docs/ARCHITECTURE.md`, not yet fully enforced — S2/S3 pending.
 - L2/L3, string extraction, Linux/macOS: not started.
@@ -114,7 +117,8 @@ this table to find the file.
 |---|---|---|---|
 | New functionality, pure logic | **P4** | `port/src/overhaul/` + `port/tests/` | `overhaul.py build`, `ctest` |
 | Entry point / crash handler | **P3** | `port/fixups/Window.cpp` (whole-file overlay) | `overhaul.py derive` |
-| PopLib behavior / build | **P3** | `port/make-patches.py` (`EDITS`, `HELPER`, `CAPTURE_FUNC`) | `overhaul.py patch --regenerate` |
+| PopLib behavior / build | **P3** | `port/make-patches.py` (`EDITS`, `HELPER`, `CAPTURE_FUNC`, `HEADLESS_FUNC`) | `overhaul.py patch --regenerate` |
+| Headless input / state probe | **P3** | `port/make-patches.py` (`HEADLESS_FUNC` → `appbase.cpp`) | `overhaul.py patch --regenerate` |
 | Game behaviour (bugs, port features) | **P3** | `port/fixups/apply-gamefixes.py` | `overhaul.py derive` |
 | Mechanical renames / includes / platform API | **P2** | `port/port.sh`, `apply-portability.py`, `apply-blocks.py`, `port/include-map.txt` | `overhaul.py derive` |
 | CMake / targets / output name | — | `CMakeLists.txt`, `port/CMakeLists.txt` | `overhaul.py build` |
@@ -190,8 +194,12 @@ python port/tools/overhaul.py build
 # OVERHAUL_NO_VCVARS=1 before running; the build script then sets INCLUDE/LIB/PATH
 # itself.
 
-# 5. Deterministic UI regression
+# 5. Deterministic UI regression (all five scenarios)
 python port/tools/overhaul.py test
+#    default / force / legacy  = static screens + update-dialog guards
+#    newuser  = click PLAY, assert NewUserDialog is reached, no crash
+#    play     = full title -> user -> selector -> help -> Board path
+#    A scenario fails if it never reaches expect_widget or writes crash.txt.
 
 # 6. Desktop smoke test — REQUIRED for rendering, windowing, input, or audio
 python port/tools/overhaul.py test --driver desktop --only default --seconds 15
@@ -235,15 +243,18 @@ that reason must be re-checked by a human.
 | "It builds" | build log tail + exit code + `ls -l port/bin/Insaniquarium.exe` |
 | "UI is fixed" | exported frame paths + `manifest.json` + before/after diff |
 | "It does not crash" | run duration, exit code, `crash.txt` absence, last frame |
+| "Screen X is reached" | `state.ndjson` trace + `manifest.json` `widgets_seen` containing the expected class; an `expect_widget` scenario that passes |
 | "Assets are complete" | `verify-assets.py` output |
 | "Patch is clean" | `apply-patches.py --check` output |
 | "Fixup is applied" | `[ok]` / `[already applied]` lines, zero `[FAILED]` |
 
 Hard limits of headless capture (`SDL_VIDEODRIVER=dummy`):
 
-- Proves logic, loading, 640×480 layout, and absence of fatal errors.
-- Does **not** prove real-driver rendering, input handling, audio, vsync,
-  window focus, or timing-dependent state.
+- Proves logic, loading, 640×480 layout, UI state transitions, and absence of
+  fatal errors. Scripted input uses real SDL events pushed into the normal event
+  pump, so it exercises the same widget handlers as a human click.
+- Does **not** prove real-driver rendering, physical input devices, audio,
+  vsync, window focus, or OS-compositor timing.
 - Never present a headless frame as proof that the desktop build works.
 
 Never use a desktop screenshot as the *only* evidence: screenshots are not
@@ -267,6 +278,7 @@ minimal reproduction. "It crashed" alone is not a report.
 | `default.xml` moved | resource load failure / English fallback | An old CN patch moved it under `old_cn_patch/`; `copy-assets.sh` searches several paths. |
 | Persistent state | first-run UI differs between sessions | PopLib stores `registry.json` + `userdata/` under `%LOCALAPPDATA%`. Use `OVERHAUL_USER_DATA_DIR` for tests; never delete the player's real profile. |
 | TTF metrics | widget text at the top-left, empty buttons | `SysFont::DrawString` must apply `Graphics::Translate()` (`mTransX`/`mTransY`). `ImageFont` gets this via `DrawImage`. |
+| `SysFont` shallow copy | crash on click PLAY / opening NewUserDialog; heap corruption, no C++ exception | `SysFont::Duplicate()` copied `TTF_Font*` by value; two destructors closed the same font. `SysFont` now holds a shared `int *mRefCount`; copy increments, destructor decrements and closes only at zero. Never remove the refcount. |
 | SDL dummy | passes headless, fails on the desktop | Dummy is not a rendering test. Real-driver smoke test is mandatory for UI. |
 | PopCap XML dialect | `XML_ERROR_PARSING_ATTRIBUTE` | Bare attributes (`cols=3`) and private entities (`&cr;`, `&nbsp;`) are normalized in `xmlparser.cpp`. |
 | 256-glyph `ImageFont` | CJK missing or wrong glyphs | Never use `ImageFont` for CJK. Use `SysFont` (SDL_ttf). |
@@ -382,14 +394,15 @@ Human reviewer checklist:
 
 ---
 
-## 13. Known issues (2026-11-11)
+## 13. Known issues (2026-11-16)
 
 | Severity | Issue | Status / next step |
 |---|---|---|
-| **P0** | User reports "crash on entry" (2026-11-11). Automated desktop-driver runs are **stable**: 12 s, 6 frames, no `crash.txt`, clean timeout. The earlier `exit 127` came from `timeout`/background-shell handling of a GUI process, not from the game. | Needs a minimal user-side repro: exact exe path, command, screen where it stops, exit code. Do not change code until it is reproduced. |
-| **P0** | No automated input injection. The path title → PLAY → game selector → level is not covered by any test. | Add a frame-scheduled input hook (mouse/key) to the capture channel, then extend `run-capture-test.py`. |
+| ~~P0~~ **fixed** | "Crash on entry": clicking PLAY exited with code 127, no `crash.txt`, no C++ exception. | Root cause: `SysFont::Duplicate()` shallow-copied `TTF_Font*`; the copy's destructor closed the font still in use, corrupting the heap when `NewUserDialog` was built. Fixed with a shared `int *mRefCount` (see §8). Reproduced and verified by the `newuser` and `play` scenarios. |
+| ~~P0~~ **fixed** | No automated input injection; the title → PLAY → board path was untested. | Added frame-scheduled real SDL input (`OVERHAUL_INPUT_SCRIPT`) and a UI state trace (`OVERHAUL_STATE_FILE`). `run-capture-test.py` now has `newuser` and `play` scenarios that assert the expected widget class is reached. |
 | P1 | `ui.ttf` is a local copy of a system font. | Replace with an OFL font before any release. |
 | P1 | L2/L3, string extraction, Linux/macOS. | See §12. |
+| P1 | Physical input devices and real-driver rendering are not covered by headless capture. | Run the desktop smoke test (§5 step 6) before claiming an input/rendering fix; a human still needs to confirm the visual result. |
 | P2 | Two legacy FishSongMgr fixups were reporting false `[FAILED]` because upstream already contains the fix. | Anchors corrected; the derive log is now clean. |
 | P2 | The four `port/fixups/*.py` scripts mix mechanical rules and behavioural fixes, and three of them are documented in Spanish. | Stage S3 in `docs/ARCHITECTURE.md` §12. Until then, new edits must stay in the file whose stated purpose matches the class. |
 
@@ -399,6 +412,12 @@ version, `include(CTest)` — was dead code and the exe reported PopLib's versio
 Fixed in `port/build-windows.bat` (`-S "%ROOT%"`). Every run now also logs build
 identity, so a crash report finally carries the commit, configuration, and
 architecture it came from.
+
+Resolved 2026-11-16: the top-level SEH crash handler and startup banner were
+temporarily wrapped in a catch-all C++ exception handler during diagnosis. The
+catch swallowed fatal exceptions and returned exit code 0, which would have made
+a crash look like a passing headless run. Removed: escaping C++ exceptions now
+terminate with a non-zero exit, and hard crashes still write `crash.txt`.
 
 ---
 
@@ -445,11 +464,34 @@ Useful environment variables:
 | `OVERHAUL_CAPTURE_MAX` | cap on sampled frames |
 | `OVERHAUL_CAPTURE_DIR` | capture output directory |
 | `OVERHAUL_UPDATE_DIALOG` | `legacy` or `force`; unset disables the dead update prompt |
+| `OVERHAUL_INPUT_SCRIPT` | frame-scheduled real SDL input, e.g. `100:click:240,427;130:text:Tester` |
+| `OVERHAUL_STATE_FILE` | NDJSON UI state trace (focus/over/down/widgets per frame) |
+| `OVERHAUL_STATE_EVERY` | state sample period in frames (default: every frame) |
+| `OVERHAUL_STATE_LAST` | path for the final state snapshot |
 | `OVERHAUL_LOG_FILE` | mirror diagnostics into a file (double-click launches) |
 
 Every switch that is set is echoed in the startup banner, so a log always
 explains its own run. A new switch must be added to
 `port/src/overhaul/startup.cpp` (`kReportedSwitches`) or it will not appear.
+
+### Input script syntax
+
+`OVERHAUL_INPUT_SCRIPT` is a semicolon-separated list of
+`frame:action:arg` steps, evaluated once per AppBase update:
+
+| Action | Argument | Effect |
+|---|---|---|
+| `move` | `x,y` | push `SDL_EVENT_MOUSE_MOTION` |
+| `click` | `x,y` | push motion + button down + button up |
+| `key` | SDL key name | push key down + key up |
+| `text` | UTF-8 string | push `SDL_EVENT_TEXT_INPUT` |
+
+Coordinates are in the 640×480 logical canvas. Steps are injected as **real SDL
+events** into the normal event pump, so they drive the same widget handlers as a
+human click — no test-only back door. `run-capture-test.py` builds these strings
+from `CLICK_PLAY` / `NEW_USER_FLOW` / `PLAY_FLOW`; do not hand-write long scripts
+in shell commands. The paired `OVERHAUL_STATE_FILE` records the widgets present
+after each step, which is the evidence that a screen was actually reached.
 
 ---
 

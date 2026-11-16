@@ -18,3 +18,6 @@ out/
 cmake-build-*/
 *.user
 .vs/
+# Python bytecode from tooling / syntax checks
+__pycache__/
+*.pyc
