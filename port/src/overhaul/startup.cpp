@@ -14,6 +14,7 @@ namespace
 // list makes a run unexplainable from its log, which is the exact failure this
 // banner exists to prevent: add new switches here when you add them.
 const char *const kReportedSwitches[] = {
+	"OVERHAUL_NO_AUDIO",        // forced silence (automated regression runs)
 	"OVERHAUL_USER_DATA_DIR",   // isolated profile root (tests, parallel runs)
 	"OVERHAUL_UPDATE_DIALOG",   // legacy / force: dead update prompt
 	"OVERHAUL_CAPTURE_FRAMES",  // exact frame numbers to export

@@ -200,6 +200,8 @@ python port/tools/overhaul.py test
 #    newuser  = click PLAY, assert NewUserDialog is reached, no crash
 #    play     = full title -> user -> selector -> help -> Board path
 #    A scenario fails if it never reaches expect_widget or writes crash.txt.
+#    Every scenario sets OVERHAUL_NO_AUDIO=1 and asserts the binary printed
+#    its mute banner: automated runs never play the not-yet-matching BGM.
 
 # 6. Desktop smoke test — REQUIRED for rendering, windowing, input, or audio
 python port/tools/overhaul.py test --driver desktop --only default --seconds 15
@@ -471,6 +473,7 @@ Useful environment variables:
 | Variable | Effect |
 |---|---|
 | `OVERHAUL_NO_VCVARS=1` | build without `vcvarsall.bat` (restricted sandbox) |
+| `OVERHAUL_NO_AUDIO=1` | force music/SFX/master volume to 0; every automated scenario sets this |
 | `OVERHAUL_USER_DATA_DIR` | isolated registry/userdata root (tests only) |
 | `OVERHAUL_CAPTURE_FRAMES` | exact frame numbers to export |
 | `OVERHAUL_CAPTURE_EVERY` | periodic frame sampling |

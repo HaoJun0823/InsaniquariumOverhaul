@@ -404,6 +404,37 @@ void OverhaulHeadlessTick(AppBase *theApp)
 }
 }
 '''
+
+# Automated runs must not make noise: BGM playback still differs from retail
+# (the decompiled title path remaps 2:45 -> Insaniq2.mo3), so hearing it during
+# a headless/desktop regression is both distracting and misleading.
+# Clamp every volume setter instead of just
+# the initial volume -- OptionsDialog and the game itself call these setters
+# later, and a one-time mute would silently be undone.
+#
+#   OVERHAUL_NO_AUDIO=1 (or "true") -> music, SFX and master forced to 0
+#
+# The audio devices are still created, so this cannot turn a missing audio
+# device into a different crash path; it only guarantees silence.
+AUDIO_FUNC = r'''
+// Overhaul: unconditional silence for automated runs.
+namespace
+{
+bool OverhaulAudioMuted()
+{
+	static const bool sMuted = []() {
+		const char *aValue = std::getenv("OVERHAUL_NO_AUDIO");
+		if (aValue == nullptr)
+			return false;
+		bool aMuted = (std::string(aValue) == "1" || std::string(aValue) == "true");
+		if (aMuted)
+			std::fprintf(stderr, "[overhaul-audio] muted (OVERHAUL_NO_AUDIO=%s)\n", aValue);
+		return aMuted;
+	}();
+	return sMuted;
+}
+}
+'''
 # (relative path, list of (old, new) exact replacements)
 EDITS = {
     "PopLib/common.cpp": [
@@ -471,12 +502,36 @@ EDITS = {
         # Added after the include block and before the namespace opens, so it
         # can see AppBase/WidgetManager complete types and use typeid.
         ("using namespace PopLib;",
-         "using namespace PopLib;\n" + HEADLESS_FUNC.lstrip("\n")),
+         "using namespace PopLib;\n" + AUDIO_FUNC.lstrip("\n") + HEADLESS_FUNC.lstrip("\n")),
         ("bool AppBase::ProcessDeferredMessages(bool singleMessage)\n{\n\tSDL_Event event;",
          "bool AppBase::ProcessDeferredMessages(bool singleMessage)\n{\n"
          "\t// Overhaul: headless input/script and state probe. No-op unless\n"
          "\t// OVERHAUL_INPUT_SCRIPT or OVERHAUL_STATE_FILE is set.\n"
          "\tOverhaulHeadlessTick(this);\n\n\tSDL_Event event;"),
+        # Silent automated runs. Clamp at the setter, not just at init: the
+        # game (OptionsDialog, PlayMusic, ...) can raise the volume later.
+        ("void AppBase::SetMusicVolume(double theVolume)\n{\n\tmMusicVolume = theVolume;\n\n"
+         "\tif (mMusicInterface != nullptr)\n"
+         "\t\tmMusicInterface->SetVolume((mMuteCount > 0) ? 0.0 : mMusicVolume * 10);\n}",
+         "void AppBase::SetMusicVolume(double theVolume)\n{\n"
+         "\tif (OverhaulAudioMuted())\n\t\ttheVolume = 0.0;\n"
+         "\tmMusicVolume = theVolume;\n\n"
+         "\tif (mMusicInterface != nullptr)\n"
+         "\t\tmMusicInterface->SetVolume((mMuteCount > 0) ? 0.0 : mMusicVolume * 10);\n}"),
+        ("void AppBase::SetSfxVolume(double theVolume)\n{\n\tmSfxVolume = theVolume;\n\n"
+         "\tif (mSoundManager != nullptr)\n"
+         "\t\tmSoundManager->SetVolume((mMuteCount > 0) ? 0.0 : mSfxVolume);\n}",
+         "void AppBase::SetSfxVolume(double theVolume)\n{\n"
+         "\tif (OverhaulAudioMuted())\n\t\ttheVolume = 0.0;\n"
+         "\tmSfxVolume = theVolume;\n\n"
+         "\tif (mSoundManager != nullptr)\n"
+         "\t\tmSoundManager->SetVolume((mMuteCount > 0) ? 0.0 : mSfxVolume);\n}"),
+        ("void AppBase::SetMasterVolume(double theMasterVolume)\n{\n"
+         "\tmSfxVolume = theMasterVolume;\n\tmSoundManager->SetMasterVolume(mSfxVolume);\n}",
+         "void AppBase::SetMasterVolume(double theMasterVolume)\n{\n"
+         "\tif (OverhaulAudioMuted())\n\t\ttheMasterVolume = 0.0;\n"
+         "\tmSfxVolume = theMasterVolume;\n"
+         "\tmSoundManager->SetMasterVolume(mSfxVolume);\n}"),
         # Event trace: record the exact SDL event processed before it is
         # handled, so a crash can be attributed to a specific input. Only
         # active when a state trace is requested (diagnostic builds/tests).

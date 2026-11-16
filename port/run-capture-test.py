@@ -161,6 +161,11 @@ def run_scenario(name, spec, seconds, driver):
         env["SDL_VIDEODRIVER"] = "dummy"
         env["SDL_RENDER_DRIVER"] = "software"
     env.update({
+        # Automated runs must be silent. BGM playback does not yet match
+        # retail, so playing it during a regression is both distracting and
+        # misleading. Scenarios may override this below if a
+        # future test specifically needs audio.
+        "OVERHAUL_NO_AUDIO": "1",
         "OVERHAUL_USER_DATA_DIR": profile.as_posix(),
         "OVERHAUL_CAPTURE_FRAMES": FRAMES,
         "OVERHAUL_CAPTURE_EVERY": "60",
@@ -236,10 +241,13 @@ def run_scenario(name, spec, seconds, driver):
         "exe_md5": hashlib.md5(EXE.read_bytes()).hexdigest() if EXE.exists() else None,
         "profile": str(profile),
         "overrides": {k: env[k] for k in (
-            "SDL_VIDEODRIVER", "SDL_RENDER_DRIVER", "OVERHAUL_USER_DATA_DIR",
+            "SDL_VIDEODRIVER", "SDL_RENDER_DRIVER", "OVERHAUL_NO_AUDIO",
+            "OVERHAUL_USER_DATA_DIR",
             "OVERHAUL_CAPTURE_FRAMES", "OVERHAUL_CAPTURE_EVERY",
             "OVERHAUL_CAPTURE_MAX", "OVERHAUL_CAPTURE_DIR",
             "OVERHAUL_UPDATE_DIALOG") if k in env},
+        "audio_muted": env.get("OVERHAUL_NO_AUDIO") in ("1", "true"),
+        "audio_mute_banner": "[overhaul-audio] muted" in err_text,
         "expected_running_at_timeout": True,
         "timed_out_as_expected": timed_out,
         "returncode": proc.returncode,
@@ -263,6 +271,13 @@ def run_scenario(name, spec, seconds, driver):
         problems.append(f"process exited early with {proc.returncode}")
     if crash.exists():
         problems.append("crash.txt exists")
+    # A regression must never play the wrong BGM through the speakers. The
+    # banner proves the binary actually honoured the environment variable,
+    # not just that the harness happened to set it.
+    if not manifest["audio_muted"] or not manifest["audio_mute_banner"]:
+        problems.append(
+            f"audio not muted (env={env.get('OVERHAUL_NO_AUDIO')!r}, "
+            f"banner={manifest['audio_mute_banner']})")
     if expect_widget and expect_widget not in widgets_seen:
         problems.append(
             f"never reached expected widget {expect_widget!r} "

@@ -183,6 +183,12 @@ python port/run-capture-test.py --only scaled   # 只跑 2× 原生密度呈现�
 `build/ui-regression/` 下，绝不碰玩家真实数据），用 headless 帧导出拿画面，
 并把环境变量、`registry.json` 快照、每帧尺寸与 MD5 写进 `manifest.json`。
 
+所有场景（headless 与 desktop）都设 `OVERHAUL_NO_AUDIO=1`：音乐、音效、主音量
+三个 setter 在 `AppBase` 层被钳到 0，游戏后续再调音量也压不回来。当前移植版
+BGM 尚未与原版逐字节一致，自动化测试不应把它播出来。manifest 里的
+`audio_muted` / `audio_mute_banner` 会验证程序确实收到了开关；没有横幅即判失败。
+真人手动游玩时不设该变量，声音正常。
+
 | 场景 | 开关 / 输入脚本 | 期望 |
 |---|---|---|
 | `default` | 无 | 干净的 `CLICK HERE TO PLAY!` 标题界面，**无更新弹窗** |

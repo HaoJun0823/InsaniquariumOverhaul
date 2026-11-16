@@ -1,11 +1,28 @@
 --- a/PopLib/appbase.cpp
 +++ b/PopLib/appbase.cpp
-@@ -52,7 +52,264 @@
+@@ -52,7 +52,281 @@
  // H522
  #include <json.hpp>
  
 -using namespace PopLib;
 +using namespace PopLib;
++// Overhaul: unconditional silence for automated runs.
++namespace
++{
++bool OverhaulAudioMuted()
++{
++	static const bool sMuted = []() {
++		const char *aValue = std::getenv("OVERHAUL_NO_AUDIO");
++		if (aValue == nullptr)
++			return false;
++		bool aMuted = (std::string(aValue) == "1" || std::string(aValue) == "true");
++		if (aMuted)
++			std::fprintf(stderr, "[overhaul-audio] muted (OVERHAUL_NO_AUDIO=%s)\n", aValue);
++		return aMuted;
++	}();
++	return sMuted;
++}
++}
 +// Overhaul: deterministic headless input + state probe.
 +namespace
 +{
@@ -266,7 +283,7 @@
  
  namespace fs = std::filesystem;
  
-@@ -2194,9 +2451,19 @@
+@@ -2194,9 +2468,19 @@
  //  it won't keep crashing and stuff
  bool AppBase::ProcessDeferredMessages(bool singleMessage)
  {
@@ -286,7 +303,7 @@
  		ImGui_ImplSDL3_ProcessEvent(&event);
  
  		switch (event.type)
-@@ -2232,8 +2499,8 @@
+@@ -2232,8 +2516,8 @@
  		case SDL_EVENT_MOUSE_MOTION:
  			if (!gInAssert && !mSEHOccured)
  			{
@@ -297,7 +314,7 @@
  				mWidgetManager->RemapMouse(x, y);
  				mLastUserInputTick = mLastTimerTime;
  				mWidgetManager->MouseMove(x, y);
-@@ -2267,11 +2534,8 @@
+@@ -2267,11 +2551,8 @@
  				int x = event.button.x;
  				int y = event.button.y;
  
@@ -311,3 +328,30 @@
  
  				if (down)
  					mWidgetManager->MouseDown(scaledX, scaledY, btnCode);
+@@ -4098,6 +4379,8 @@
+ 
+ void AppBase::SetMusicVolume(double theVolume)
+ {
++	if (OverhaulAudioMuted())
++		theVolume = 0.0;
+ 	mMusicVolume = theVolume;
+ 
+ 	if (mMusicInterface != nullptr)
+@@ -4111,6 +4394,8 @@
+ 
+ void AppBase::SetSfxVolume(double theVolume)
+ {
++	if (OverhaulAudioMuted())
++		theVolume = 0.0;
+ 	mSfxVolume = theVolume;
+ 
+ 	if (mSoundManager != nullptr)
+@@ -4124,6 +4409,8 @@
+ 
+ void AppBase::SetMasterVolume(double theMasterVolume)
+ {
++	if (OverhaulAudioMuted())
++		theMasterVolume = 0.0;
+ 	mSfxVolume = theMasterVolume;
+ 	mSoundManager->SetMasterVolume(mSfxVolume);
+ }
