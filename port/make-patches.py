@@ -96,15 +96,49 @@ static void OverhaulMaybeCapture(SDL_Renderer *theRenderer, int theFrame)
 }
 '''
 
+# Overhaul: native-density presentation. PopLib used a fixed 640x480 screen
+# texture and let SDL scale it to the window at present time; on a fullscreen
+# display that bilinear-upscales every small TTF glyph. The screen texture is
+# now sized to the display area, design coordinates are mapped with
+# SDL_SetRenderScale, and the final blit is 1:1. Mouse events are mapped back
+# through the same transform. Scale == 1 keeps the original behaviour (which
+# is what the headless 640x480 harness exercises).
+PRESENTATION_HELPER = r'''
+// Overhaul: design (640x480) -> native pixel transform.
+namespace OverhaulPresentation {
+    static float sScaleX = 1.0f;
+    static float sScaleY = 1.0f;
+    static float sOffsetX = 0.0f;
+    static float sOffsetY = 0.0f;
+    static int sBufferW = 0;
+    static int sBufferH = 0;
+    static int sLastWindowW = 0;
+    static int sLastWindowH = 0;
+}
+
+float SDLInterface::OverhaulDrawScale() const
+{
+    return OverhaulPresentation::sScaleX;
+}
+
+void SDLInterface::OverhaulWindowToDesign(float theX, float theY, int &theOutX, int &theOutY) const
+{
+    theOutX = (int)((theX - OverhaulPresentation::sOffsetX) / OverhaulPresentation::sScaleX);
+    theOutY = (int)((theY - OverhaulPresentation::sOffsetY) / OverhaulPresentation::sScaleY);
+}
+'''
+
 # Unattended input + state probe, injected into AppBase::ProcessDeferredMessages.
 # This is the headless-mode backbone: it pushes REAL SDL events, so injected
 # clicks traverse exactly the same path (AppBase -> WidgetManager -> Widget)
 # as a physical mouse. No direct widget calls, no test-only backdoors.
 #
 #   OVERHAUL_INPUT_SCRIPT = "90:move:240,427;95:click:240,427;180:text:Tester;200:click:465,81"
-#       frame:action:arg  -- action = move | click | key | text | focus
+#       frame:action:arg  -- action = move | click | key | text | focus | resize
 #       focus synthesizes SDL_EVENT_WINDOW_FOCUS_GAINED (arg ignored); needed
 #       on real-driver runs where a background window has no OS focus.
+#       resize W,H calls SDL_SetWindowSize so the native-density presentation
+#       path (scale > 1) can be exercised without relying on the desktop size.
 #       frames are AppBase::mUpdateCount values; events are pushed when the
 #       count first reaches the frame, then consumed by the real event pump.
 #   OVERHAUL_STATE_FILE  = path to an NDJSON trace of widget-tree state
@@ -260,10 +294,11 @@ void OverhaulHeadlessTick(AppBase *theApp)
 				else if (aAction == "key") aKind = 2;
 				else if (aAction == "text") aKind = 3;
 				else if (aAction == "focus") aKind = 4;
+				else if (aAction == "resize") aKind = 5;
 				if (aKind < 0)
 					continue;
 				int aX = 0, aY = 0;
-				if (aKind == 0 || aKind == 1)
+				if (aKind == 0 || aKind == 1 || aKind == 5)
 				{
 					size_t aComma = aArg.find(',');
 					if (aComma == std::string::npos) continue;
@@ -332,6 +367,16 @@ void OverhaulHeadlessTick(AppBase *theApp)
 			SDL_PushEvent(&aEvent);
 			std::fprintf(stderr, "[overhaul-input] frame=%d focus gained\n",
 				aFrame);
+		}
+		else if (aAct.mKind == 5)
+		{
+			// Resize the real SDL window so UpdateViewport() exercises the
+			// native-density path (scale > 1). This is the same window event a
+			// user generates by dragging or entering fullscreen; the harness
+			// does not bypass any rendering or input code.
+			SDL_SetWindowSize(theApp->mSDLInterface->mWindow, aAct.mX, aAct.mY);
+			std::fprintf(stderr, "[overhaul-input] frame=%d resize %d,%d\n",
+				aFrame, aAct.mX, aAct.mY);
 		}
 		else
 		{
@@ -444,6 +489,18 @@ EDITS = {
          "\t\t\tstd::fflush(stderr);\n"
          "\t\t}\n"
          "\t\tImGui_ImplSDL3_ProcessEvent(&event);"),
+        # Native-density presentation means SDL no longer maps mouse events
+        # into design space. Both motion and button events must be mapped back
+        # through the same transform as rendering, or fullscreen clicks miss.
+        ("\t\t\t\tint x = event.motion.x;\n\t\t\t\tint y = event.motion.y;",
+         "\t\t\t\tint x = 0, y = 0;\n"
+         "\t\t\t\tmSDLInterface->OverhaulWindowToDesign(event.motion.x, event.motion.y, x, y);"),
+        ("\t\t\t\tint renderWidth, renderHeight;\n"
+         "\t\t\t\tSDL_GetCurrentRenderOutputSize(mSDLInterface->mRenderer, &renderWidth, &renderHeight);\n\n"
+         "\t\t\t\tint scaledX = static_cast<int>(event.button.x * ((float)mWidth / renderWidth));\n"
+         "\t\t\t\tint scaledY = static_cast<int>(event.button.y * ((float)mHeight / renderHeight));",
+         "\t\t\t\tint scaledX = 0, scaledY = 0;\n"
+         "\t\t\t\tmSDLInterface->OverhaulWindowToDesign(event.button.x, event.button.y, scaledX, scaledY);"),
     ],
     "PopLib/graphics/sdlinterface.cpp": [
         # SDL_FColor is 0.0-1.0, not 0-255; unscaled values clamp to white.
@@ -454,12 +511,90 @@ EDITS = {
         ("SDL_FColor color = {(v.color >> 16) & 0xFF, (v.color >> 8) & 0xFF, v.color & 0xFF, (v.color >> 24) & 0xFF};",
          "SDL_FColor color = {((v.color >> 16) & 0xFF) / 255.0f, ((v.color >> 8) & 0xFF) / 255.0f, "
          "(v.color & 0xFF) / 255.0f, ((v.color >> 24) & 0xFF) / 255.0f};"),
-        # L1: present at the DESIGN resolution so SDL scales/letterboxes the
-        # 640x480 canvas to whatever the window is.
-        ("SDL_SetRenderLogicalPresentation(mRenderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)",
-         "SDL_SetRenderLogicalPresentation(mRenderer, mWidth, mHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)"),
+        # L1.5: rasterise the design canvas at native pixel density. SDL's
+        # logical presentation used to bilinear-upscale the 640x480 texture on
+        # present, which is what made small TTF glyphs blurry in fullscreen.
+        # Keep the game's design coordinates, scale every draw onto a native
+        # screen texture, and blit 1:1 with an explicit letterbox.
+        ("\tif (!SDL_SetRenderLogicalPresentation(mRenderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX))\n\t\treturn;",
+         "\t// Redraw also calls this; skip the work when nothing changed.\n"
+         "\tif (OverhaulPresentation::sBufferW != 0 &&\n"
+         "\t    windowWidth == OverhaulPresentation::sLastWindowW &&\n"
+         "\t    windowHeight == OverhaulPresentation::sLastWindowH)\n"
+         "\t\treturn;\n"
+         "\tOverhaulPresentation::sLastWindowW = windowWidth;\n"
+         "\tOverhaulPresentation::sLastWindowH = windowHeight;\n"
+         "\n"
+         "\t// Overhaul: native-density screen texture. The game still draws in\n"
+         "\t// 640x480 design coordinates, but the texture is as large as the\n"
+         "\t// display area so glyphs are rasterised at final pixel density.\n"
+         "\tfloat aScale = std::min((float)windowWidth / (float)mWidth,\n"
+         "\t                        (float)windowHeight / (float)mHeight);\n"
+         "\tif (aScale <= 0.0f)\n"
+         "\t\taScale = 1.0f;\n"
+         "\tint aBufferW = std::max(1, (int)std::floor((float)mWidth * aScale));\n"
+         "\tint aBufferH = std::max(1, (int)std::floor((float)mHeight * aScale));\n"
+         "\n"
+         "\t// We letterbox ourselves in Redraw; SDL must not scale a second time.\n"
+         "\tSDL_SetRenderLogicalPresentation(mRenderer, windowWidth, windowHeight,\n"
+         "\t                                 SDL_LOGICAL_PRESENTATION_DISABLED);\n"
+         "\n"
+         "\tif (mScreenTexture != nullptr &&\n"
+         "\t    (aBufferW != OverhaulPresentation::sBufferW ||\n"
+         "\t     aBufferH != OverhaulPresentation::sBufferH))\n"
+         "\t{\n"
+         "\t\tSDL_DestroyTexture(mScreenTexture);\n"
+         "\t\tmScreenTexture = SDL_CreateTexture(mRenderer, SDL_PIXELFORMAT_RGBA8888,\n"
+         "\t\t                                  SDL_TEXTUREACCESS_TARGET, aBufferW, aBufferH);\n"
+         "\t\tif (mScreenTexture == nullptr)\n"
+         "\t\t{\n"
+         "\t\t\tstd::fprintf(stderr, \"[overhaul] screen texture %dx%d failed: %s\\n\",\n"
+         "\t\t\t             aBufferW, aBufferH, SDL_GetError());\n"
+         "\t\t\treturn;\n"
+         "\t\t}\n"
+         "\t}\n"
+         "\tOverhaulPresentation::sBufferW = aBufferW;\n"
+         "\tOverhaulPresentation::sBufferH = aBufferH;\n"
+         "\tOverhaulPresentation::sScaleX = (float)aBufferW / (float)mWidth;\n"
+         "\tOverhaulPresentation::sScaleY = (float)aBufferH / (float)mHeight;\n"
+         "\tOverhaulPresentation::sOffsetX = (float)(windowWidth - aBufferW) * 0.5f;\n"
+         "\tOverhaulPresentation::sOffsetY = (float)(windowHeight - aBufferH) * 0.5f;"),
         ("mPresentationRect = Rect(0, 0, windowWidth, windowHeight);",
          "mPresentationRect = Rect(0, 0, mWidth, mHeight);"),
+        # Every draw goes into the native screen texture; map design coords
+        # with the same transform used to size that texture.
+        ("\tSDL_SetRenderTarget(mRenderer, mScreenTexture);",
+         "\tSDL_SetRenderTarget(mRenderer, mScreenTexture);\n"
+         "\tSDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);"),
+        # Present 1:1 into the letterboxed area instead of letting SDL scale.
+        ("\tSDL_RenderClear(mRenderer);\n\n"
+         "\tSDL_Rect clipRect =\n"
+         "\t\ttheClipRect\n"
+         "\t\t\t? SDL_Rect{theClipRect->mX, theClipRect->mY, theClipRect->mWidth, theClipRect->mHeight}\n"
+         "\t\t\t: SDL_Rect{mPresentationRect.mX, mPresentationRect.mY, mPresentationRect.mWidth, mPresentationRect.mHeight};\n\n"
+         "\tSDL_SetRenderClipRect(mRenderer, &clipRect);\n\n"
+         "\tPopLib::gSDLInterfacePreDrawError = (SDL_RenderTexture(mRenderer, mScreenTexture, nullptr, nullptr) < 0);",
+         "\tSDL_RenderClear(mRenderer);\n\n"
+         "\tSDL_FRect aDest = {OverhaulPresentation::sOffsetX, OverhaulPresentation::sOffsetY,\n"
+         "\t                   (float)OverhaulPresentation::sBufferW, (float)OverhaulPresentation::sBufferH};\n"
+         "\tSDL_FRect aClip = aDest;\n"
+         "\tif (theClipRect != nullptr)\n"
+         "\t{\n"
+         "\t\taClip.x = aDest.x + (float)theClipRect->mX * OverhaulPresentation::sScaleX;\n"
+         "\t\taClip.y = aDest.y + (float)theClipRect->mY * OverhaulPresentation::sScaleY;\n"
+         "\t\taClip.w = (float)theClipRect->mWidth * OverhaulPresentation::sScaleX;\n"
+         "\t\taClip.h = (float)theClipRect->mHeight * OverhaulPresentation::sScaleY;\n"
+         "\t}\n"
+         "\tSDL_Rect clipRect = {(int)aClip.x, (int)aClip.y, (int)aClip.w, (int)aClip.h};\n"
+         "\tSDL_SetRenderClipRect(mRenderer, &clipRect);\n\n"
+         "\tPopLib::gSDLInterfacePreDrawError =\n"
+         "\t\t(SDL_RenderTexture(mRenderer, mScreenTexture, nullptr, &aDest) < 0);"),
+        ("\tSDL_SetRenderTarget(mRenderer, nullptr);\n\n\tSDL_SetRenderDrawColor(mRenderer, 0, 0, 0, 0);",
+         "\t// Re-read the window size every frame. Scripted resizes and some\n"
+         "\t// window-manager transitions do not deliver RESIZED reliably.\n"
+         "\tUpdateViewport();\n"
+         "\tSDL_SetRenderTarget(mRenderer, nullptr);\n\tSDL_SetRenderScale(mRenderer, 1.0f, 1.0f);\n\n"
+         "\tSDL_SetRenderDrawColor(mRenderer, 0, 0, 0, 255);"),
         # A fatal error during AppBase::Init() fires before the SDL window
         # exists (mWindow == nullptr). SDL's message-box backend is not usable
         # that early and crashes headlessly before showing any text at all.
@@ -472,7 +607,8 @@ EDITS = {
         # Redraw, before present (readback is only valid on an unpresented
         # frame). Controlled entirely by environment variables.
         ("using namespace PopLib;",
-         "using namespace PopLib;\n" + CAPTURE_FUNC.lstrip("\n")),
+         "using namespace PopLib;\n" + CAPTURE_FUNC.lstrip("\n") +
+         PRESENTATION_HELPER.lstrip("\n")),
         ("\tSDL_RenderPresent(mRenderer);",
          "\tstatic int sOverhaulFrame = 0;\n"
          "\tOverhaulMaybeCapture(mRenderer, ++sOverhaulFrame);\n\n"
@@ -484,6 +620,15 @@ EDITS = {
          "\tif (mWindow != nullptr)\n"
          "\t\tSDL_ShowSimpleMessageBox(flags, theTitle, theMessage, mWindow);"),
     ],
+    "PopLib/graphics/sdlinterface.hpp": [
+        # Expose the presentation transform to text rendering and input
+        # mapping. Both must use the same scale or text stays small/blurry
+        # and clicks land at the wrong place on a fullscreen display.
+        ("\tvoid UpdateViewport();",
+         "\tvoid UpdateViewport();\n"
+         "\tfloat OverhaulDrawScale() const;\n"
+         "\tvoid OverhaulWindowToDesign(float theX, float theY, int &theOutX, int &theOutY) const;"),
+    ],
     "PopLib/graphics/sysfont.hpp": [
         # A SysFont copy used to share the raw TTF_Font* with its source, but
         # every copy closed it in its destructor. Widgets call Duplicate()
@@ -494,20 +639,27 @@ EDITS = {
         # Share ownership with a ref count; close only on the last release.
         ("\tTTF_Font *mTTFFont;\n\tAppBase *mApp;",
          "\tTTF_Font *mTTFFont;\n\tint *mRefCount;\n\tAppBase *mApp;"),
+        # The point size is needed to render glyphs at native density. The
+        # TTF_Font* itself is shared (refcounted), so never store a second
+        # font handle here.
+        ("\tint *mRefCount;\n\tAppBase *mApp;",
+         "\tint *mRefCount;\n\tint mPointSize;\n\tAppBase *mApp;"),
     ],
     "PopLib/graphics/sysfont.cpp": [
-        # Initialise the ref count on every construction path.
+        # Initialise the ref count on every construction path. Keep the point
+        # size too: TTF is temporarily opened larger for native-density draws.
         ("\tmApp = theApp;\n\tSDL_IOStream *io = SDL_IOFromConstMem((void *)aData, aDataSize);",
-         "\tmApp = theApp;\n\tmRefCount = new int(1);\n"
+         "\tmApp = theApp;\n\tmRefCount = new int(1);\n\tmPointSize = thePointSize;\n"
          "\tSDL_IOStream *io = SDL_IOFromConstMem((void *)aData, aDataSize);"),
         ("\tmApp = theApp;\n\n\tmTTFFont = TTF_OpenFont(theFace.c_str(), thePointSize);",
-         "\tmApp = theApp;\n\tmRefCount = new int(1);\n\n"
+         "\tmApp = theApp;\n\tmRefCount = new int(1);\n\tmPointSize = thePointSize;\n\n"
          "\tmTTFFont = TTF_OpenFont(theFace.c_str(), thePointSize);"),
         # Copy shares the font and increments the count.
         ("SysFont::SysFont(const SysFont &theSysFont)\n{\n\tmTTFFont = theSysFont.mTTFFont;",
          "SysFont::SysFont(const SysFont &theSysFont)\n{\n"
          "\tmTTFFont = theSysFont.mTTFFont;\n"
          "\tmRefCount = theSysFont.mRefCount;\n"
+         "\tmPointSize = theSysFont.mPointSize;\n"
          "\t++(*mRefCount);"),
         # Only the last owner closes the font; a null font is a no-op for
         # TTF_CloseFont but dereferencing a null ref count is not.
@@ -525,14 +677,33 @@ EDITS = {
         # a string made only of zero-width glyphs. The game draws many empty
         # labels/tooltips every frame; poplib treated each one as a FATAL error
         # and opened a modal message box. Treat zero-width as an empty draw.
-        ("#include <stdlib.h>", "#include <stdlib.h>\n#include <string.h>"),
+        ("#include <stdlib.h>", "#include <stdlib.h>\n#include <string.h>\n#include <algorithm>\n#include <cmath>"),
+        # Render glyphs at native pixel density. The screen texture is
+        # aScale times the 640x480 design size; a design-size glyph texture
+        # stretched by that factor is exactly what looked blurry fullscreen.
+        # Temporarily open the shared font at the scaled point size, render,
+        # then restore it before any other caller uses the font.
+        ("\tSDL_Surface *textSurface =\n\t\tTTF_RenderText_Blended(mTTFFont, theString.c_str(), 0, aColor);",
+         "\tconst float aSS = mApp->mSDLInterface->OverhaulDrawScale();\n"
+         "\tconst int aRenderSize = std::max(1, (int)std::lround((float)mPointSize * aSS));\n"
+         "\tconst bool aFontResized = (aRenderSize != mPointSize);\n"
+         "\tif (aFontResized)\n"
+         "\t\tTTF_SetFontSize(mTTFFont, aRenderSize);\n"
+         "\tSDL_Surface *textSurface =\n"
+         "\t\tTTF_RenderText_Blended(mTTFFont, theString.c_str(), 0, aColor);"),
         ("\t\tmApp->mSDLInterface->MakeSimpleMessageBox(\"Failed to render text: \", SDL_GetError(), SDL_MESSAGEBOX_ERROR);",
          "\t\t// SDL_ttf reports 'Text has zero width' for empty / zero-width\n"
          "\t\t// strings. That is a normal no-op, not a fatal error dialog.\n"
          "\t\tconst char *aTtfError = SDL_GetError();\n"
+         "\t\tif (aFontResized)\n"
+         "\t\t\tTTF_SetFontSize(mTTFFont, mPointSize);\n"
          "\t\tif (aTtfError != nullptr && strstr(aTtfError, \"zero width\") != nullptr)\n"
          "\t\t\treturn;\n"
          "\t\tmApp->mSDLInterface->MakeSimpleMessageBox(\"Failed to render text: \", aTtfError, SDL_MESSAGEBOX_ERROR);"),
+        ("\tSDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);",
+         "\tif (aFontResized)\n"
+         "\t\tTTF_SetFontSize(mTTFFont, mPointSize);\n"
+         "\tSDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);"),
         # WidgetManager::DrawWidgetsTo() translates Graphics into each widget's
         # local coordinates before Draw(). ImageFont goes through
         # Graphics::DrawImage and honours that transform; SysFont used to hand
@@ -542,12 +713,51 @@ EDITS = {
         # dialog look "completely broken" with empty buttons.
         ("\tSDL_FRect dstRect = {(float)theX, (float)theY - (float)mAscent, (float)textSurface->w, (float)textSurface->h};",
          "\t// Overhaul: honour Graphics::Translate() like Graphics::DrawImage does.\n"
+         "\t// The glyph texture is aSS times larger than the design rect; draw\n"
+         "\t// it back at design size so the native-density screen texture maps\n"
+         "\t// it 1:1 instead of upscaling a small texture.\n"
          "\tconst float aTransX = g->mTransX;\n"
          "\tconst float aTransY = g->mTransY;\n"
          "\tSDL_FRect dstRect = {(float)theX + aTransX, (float)theY - (float)mAscent + aTransY,\n"
-         "\t                     (float)textSurface->w, (float)textSurface->h};"),
+         "\t                     (float)textSurface->w / aSS, (float)textSurface->h / aSS};"),
         ("\t\tSDL_FRect shadowRect = {(float)theX + 1.f, (float)theY - (float)mAscent + 1.f, dstRect.w, dstRect.h};",
          "\t\tSDL_FRect shadowRect = {dstRect.x + 1.f, dstRect.y + 1.f, dstRect.w, dstRect.h};"),
+        # ImageFont::DrawString clips each glyph to theClipRect. SysFont (TTF)
+        # ignored it, so EditWidget's two-pass draw painted the black
+        # COLOR_HILITE_TEXT pass over the WHOLE string instead of only the
+        # selection/cursor sliver: the typed name became black-on-dark and
+        # unreadable. Intersect the destination rect with the clip rect and
+        # shrink the source rect by the same amount. theClipRect is already in
+        # screen space (Graphics::ClipRect applies mTransX/Y), as is dstRect.
+        ("\tSDL_FRect srcRect = {0, 0, dstRect.w, dstRect.h};\n\tSDL_DestroySurface(textSurface);",
+         "\tSDL_FRect srcRect = {0, 0, (float)textSurface->w, (float)textSurface->h};\n"
+         "\t// Overhaul: honour theClipRect like ImageFont does. The clip is in\n"
+         "\t// design space, the source rect in supersampled glyph pixels.\n"
+         "\tfloat aCX0 = (float)theClipRect.mX, aCY0 = (float)theClipRect.mY;\n"
+         "\tfloat aCX1 = aCX0 + (float)theClipRect.mWidth, aCY1 = aCY0 + (float)theClipRect.mHeight;\n"
+         "\tfloat aX0 = std::max(dstRect.x, aCX0), aY0 = std::max(dstRect.y, aCY0);\n"
+         "\tfloat aX1 = std::min(dstRect.x + dstRect.w, aCX1), aY1 = std::min(dstRect.y + dstRect.h, aCY1);\n"
+         "\tif (aX1 > aX0 && aY1 > aY0)\n"
+         "\t{\n"
+         "\t\tsrcRect.x = (aX0 - dstRect.x) * aSS;\n"
+         "\t\tsrcRect.y = (aY0 - dstRect.y) * aSS;\n"
+         "\t\tsrcRect.w = (aX1 - aX0) * aSS;\n"
+         "\t\tsrcRect.h = (aY1 - aY0) * aSS;\n"
+         "\t\tdstRect.x = aX0; dstRect.y = aY0; dstRect.w = aX1 - aX0; dstRect.h = aY1 - aY0;\n"
+         "\t}\n"
+         "\telse\n"
+         "\t{\n"
+         "\t\tSDL_DestroyTexture(textTexture);\n"
+         "\t\tSDL_DestroySurface(textSurface);\n"
+         "\t\treturn;\n"
+         "\t}\n"
+         "\tSDL_DestroySurface(textSurface);"),
+        # The shadow rect is derived from dstRect; recompute its src offset so
+        # the 1px shadow uses the matching slice of the glyph atlas.
+        ("\t\tSDL_FRect shadowRect = {dstRect.x + 1.f, dstRect.y + 1.f, dstRect.w, dstRect.h};\n"
+         "\t\tmApp->mSDLInterface->BltTexture(textTexture, srcRect, shadowRect, Color(0, 0, 0), g->GetDrawMode());",
+         "\t\tSDL_FRect shadowRect = {dstRect.x + 1.f, dstRect.y + 1.f, dstRect.w, dstRect.h};\n"
+         "\t\tmApp->mSDLInterface->BltTexture(textTexture, srcRect, shadowRect, Color(0, 0, 0), g->GetDrawMode());"),
     ],
     "PopLib/readwrite/xmlparser.cpp": [
         # resources.xml contains `cols=3` (unquoted). tinyxml2 rejects it,

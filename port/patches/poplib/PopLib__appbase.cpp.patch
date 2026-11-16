@@ -1,6 +1,6 @@
 --- a/PopLib/appbase.cpp
 +++ b/PopLib/appbase.cpp
-@@ -52,7 +52,253 @@
+@@ -52,7 +52,264 @@
  // H522
  #include <json.hpp>
  
@@ -153,10 +153,11 @@
 +				else if (aAction == "key") aKind = 2;
 +				else if (aAction == "text") aKind = 3;
 +				else if (aAction == "focus") aKind = 4;
++				else if (aAction == "resize") aKind = 5;
 +				if (aKind < 0)
 +					continue;
 +				int aX = 0, aY = 0;
-+				if (aKind == 0 || aKind == 1)
++				if (aKind == 0 || aKind == 1 || aKind == 5)
 +				{
 +					size_t aComma = aArg.find(',');
 +					if (aComma == std::string::npos) continue;
@@ -226,6 +227,16 @@
 +			std::fprintf(stderr, "[overhaul-input] frame=%d focus gained\n",
 +				aFrame);
 +		}
++		else if (aAct.mKind == 5)
++		{
++			// Resize the real SDL window so UpdateViewport() exercises the
++			// native-density path (scale > 1). This is the same window event a
++			// user generates by dragging or entering fullscreen; the harness
++			// does not bypass any rendering or input code.
++			SDL_SetWindowSize(theApp->mSDLInterface->mWindow, aAct.mX, aAct.mY);
++			std::fprintf(stderr, "[overhaul-input] frame=%d resize %d,%d\n",
++				aFrame, aAct.mX, aAct.mY);
++		}
 +		else
 +		{
 +			// TEXT_INPUT feeds EditWidget (new-user name, fish names).
@@ -255,7 +266,7 @@
  
  namespace fs = std::filesystem;
  
-@@ -2194,9 +2440,19 @@
+@@ -2194,9 +2451,19 @@
  //  it won't keep crashing and stuff
  bool AppBase::ProcessDeferredMessages(bool singleMessage)
  {
@@ -275,3 +286,28 @@
  		ImGui_ImplSDL3_ProcessEvent(&event);
  
  		switch (event.type)
+@@ -2232,8 +2499,8 @@
+ 		case SDL_EVENT_MOUSE_MOTION:
+ 			if (!gInAssert && !mSEHOccured)
+ 			{
+-				int x = event.motion.x;
+-				int y = event.motion.y;
++				int x = 0, y = 0;
++				mSDLInterface->OverhaulWindowToDesign(event.motion.x, event.motion.y, x, y);
+ 				mWidgetManager->RemapMouse(x, y);
+ 				mLastUserInputTick = mLastTimerTime;
+ 				mWidgetManager->MouseMove(x, y);
+@@ -2267,11 +2534,8 @@
+ 				int x = event.button.x;
+ 				int y = event.button.y;
+ 
+-				int renderWidth, renderHeight;
+-				SDL_GetCurrentRenderOutputSize(mSDLInterface->mRenderer, &renderWidth, &renderHeight);
+-
+-				int scaledX = static_cast<int>(event.button.x * ((float)mWidth / renderWidth));
+-				int scaledY = static_cast<int>(event.button.y * ((float)mHeight / renderHeight));
++				int scaledX = 0, scaledY = 0;
++				mSDLInterface->OverhaulWindowToDesign(event.button.x, event.button.y, scaledX, scaledY);
+ 
+ 				if (down)
+ 					mWidgetManager->MouseDown(scaledX, scaledY, btnCode);

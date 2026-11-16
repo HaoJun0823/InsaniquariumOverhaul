@@ -123,8 +123,10 @@ cd port/bin && Insaniquarium.exe
 | **CMake configure** | ✅ 生成 `build.ninja`，1565 条 build 边 |
 | **完整编译 + 链接** | ✅ **exit 0**，`port/bin/Insaniquarium.exe` 9.5 MB（仅少量无害 warning） |
 | **启动验证（headless，15 s）** | ✅ 资源加载成功、无崩溃、0 警告；exe 仅依赖系统 DLL + `bass.dll` |
-| **确定性 UI 回归（5 场景）** | ✅ `python port/run-capture-test.py` 全绿；隔离 profile + manifest + 状态轨迹，逐帧可复现 |
+| **确定性 UI 回归（7 场景）** | ✅ `python port/run-capture-test.py` 全绿；隔离 profile + manifest + 状态轨迹，逐帧可复现 |
 | **点击 PLAY 崩溃修复** | ✅ `SysFont` 浅拷贝 TTF 指针致重复释放；加引用计数后 `newuser` / `play` 两场景进入关卡、无 `crash.txt` |
+| **用户名颜色修复** | ✅ `SysFont::DrawString` 遵守 `theClipRect`，黑色高亮 pass 不再覆盖整个输入框，名字浅色可读 |
+| **全屏文字清晰度（L1.5）** | ✅ 屏幕纹理按显示区域原生尺寸创建，设计坐标经 `SDL_SetRenderScale` 映射，TTF 按 `pointSize × scale` 渲染，最终 1:1 blit；`scaled` / `scalednewuser` 导出 1280×960 帧作证 |
 | **单元测试 + doctor** | ✅ `ctest` 1/1 通过；`overhaul.py doctor` 全部检查通过 |
 
 本轮修掉的上游/移植问题：官库 `alldemos` 目标不存在导致 configure 失败、
@@ -132,8 +134,9 @@ cd port/bin && Insaniquarium.exe
 XML 归一化器漏写 `=`、TTF 空字符串触发模态错误框、启动时缺 `default.xml`、
 以及 `bass.dll` 未随 exe 部署。
 
-**决策已定**：留官库 poplib + `port/patches/` 补丁集（不 fork）；本轮 UI 只做
-**L1 + TTF**；游戏资产来自用户零售版，版权资产与字体二进制均不入库。
+**决策已定**：留官库 poplib + `port/patches/` 补丁集（不 fork）；本轮 UI 做到
+**L1.5 + TTF**（L1 的 640×480 设计坐标 + 原生密度呈现，不再把小字位图拉伸到全屏）；
+游戏资产来自用户零售版，版权资产与字体二进制均不入库。
 L2（宽屏锚点布局）/ L3（素材重绘）待排期，详见设计文档第 5 节。
 
 ---
@@ -159,13 +162,21 @@ poplib 把全部持久化状态放在 `%LOCALAPPDATA%`，而 `ShouldCheckForUpda
    进入 `NewUserDialog` 时多个字体副本析构，重复 `TTF_CloseFont` 同一指针，
    堆被破坏、进程以 127 退出，且没有任何 C++ 异常或 `crash.txt`。
    现改为共享 `int *mRefCount`，引用归零才关闭字体。
+4. **`SysFont::DrawString` 忽略 `theClipRect`**：`EditWidget` 用两遍绘制实现
+   选中/光标高亮，第二遍是黑色且带 clip。忽略 clip 后黑色覆盖整串，默认用户名
+   变成黑底黑字。现在按 `ImageFont` 的方式裁剪目标/源矩形，名字恢复浅色可读。
+5. **全屏后字迹模糊**：过去整条链路是「640×480 纹理 → SDL 在 present 时双线性
+   放大到窗口」，10–15px 的 TTF 字被整体拉伸。L1.5 改成「屏幕纹理按显示区域
+   原生尺寸创建 → 设计坐标用 `SDL_SetRenderScale` 映射 → TTF 用放大后的 point size
+   渲染 → 最终 1:1 blit + 手写 letterbox」，鼠标事件用同一变换逆映射回设计坐标。
 
 现在验证是确定性的：
 
 ```bash
-python port/run-capture-test.py                 # 全部 5 场景
+python port/run-capture-test.py                 # 全部 7 场景
 python port/run-capture-test.py --only force    # 只跑对话框渲染回归
 python port/run-capture-test.py --only play     # 只跑完整进入关卡路径
+python port/run-capture-test.py --only scaled   # 只跑 2× 原生密度呈现回归
 ```
 
 脚本每次**重建一个隔离的全新 profile**（`OVERHAUL_USER_DATA_DIR`，只写在
@@ -179,6 +190,8 @@ python port/run-capture-test.py --only play     # 只跑完整进入关卡路径
 | `legacy` | `OVERHAUL_UPDATE_DIALOG=legacy` | 复刻原 `ShouldCheckForUpdate()` 分支 |
 | `newuser` | `OVERHAUL_INPUT_SCRIPT=100:click:240,427` | 点击 PLAY 到达 `NewUserDialog`，**不崩溃** |
 | `play` | 完整 `PLAY_FLOW`（点击 + 输入名字 + OK + Adventure + Continue） | 一路进入 `Board`，场上出现 `Fish`/`MessageWidget` |
+| `scaled` | `20:resize:1280,960` | 窗口放大后画面铺满，帧尺寸 1280×960，文字不再被拉伸模糊 |
+| `scalednewuser` | 2× 下点击 PLAY + 输入名字 | 放大坐标仍能正确命中 widget，TTF 输入框文字清晰 |
 
 `newuser` / `play` 用 `OVERHAUL_INPUT_SCRIPT` 注入**真实 SDL 事件**，走正常事件泵和
 widget 处理路径（不是测试专用后门）。`OVERHAUL_STATE_FILE` 记录每帧的 widget 集合，
@@ -186,7 +199,8 @@ manifest 的 `expect_widget` 字段声明该场景必须到达的界面；没到
 即判失败。这正是把「点击 PLAY 崩溃」变成一条可复现自动测试的做法。
 
 输入脚本动作：`move x,y` / `click x,y` / `key <SDL keycode>` / `text <字符串>` /
-`focus`（合成 `SDL_EVENT_WINDOW_FOCUS_GAINED`）。`--driver desktop` 时脚本自动前置
+`focus`（合成 `SDL_EVENT_WINDOW_FOCUS_GAINED`）/ `resize W,H`（调用真实
+`SDL_SetWindowSize`，触发原生密度呈现路径）。`--driver desktop` 时脚本自动前置
 `10:focus:0`——真实窗口在后台启动会收到 `WINDOW_FOCUS_LOST`，PopLib 把 `mActive`
 置 false 后忽略点击，而真人会先点一下窗口再操作；dummy 驱动不会失焦，无需此步。
 加此步后 `python port/run-capture-test.py --driver desktop --only play` 也能到达 `Board`。

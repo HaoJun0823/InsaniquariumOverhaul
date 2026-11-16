@@ -1,0 +1,13 @@
+--- a/PopLib/graphics/sdlinterface.hpp
++++ b/PopLib/graphics/sdlinterface.hpp
+@@ -114,7 +114,9 @@
+ 	void Cleanup();
+ 
+ 	SDLImage *GetScreenImage();
+-	void UpdateViewport();
++	void UpdateViewport();
++	float OverhaulDrawScale() const;
++	void OverhaulWindowToDesign(float theX, float theY, int &theOutX, int &theOutY) const;
+ 	int Init(bool IsWindowed);
+ 
+ 	bool InitSDLWindow(bool IsWindowed);

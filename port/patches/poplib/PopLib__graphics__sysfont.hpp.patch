@@ -1,10 +1,11 @@
 --- a/PopLib/graphics/sysfont.hpp
 +++ b/PopLib/graphics/sysfont.hpp
-@@ -19,6 +19,7 @@
+@@ -19,6 +19,8 @@
  {
    public:
  	TTF_Font *mTTFFont;
 +	int *mRefCount;
++	int mPointSize;
  	AppBase *mApp;
  	bool mDrawShadow;
  	bool mSimulateBold;

@@ -232,11 +232,18 @@ what to look at, it does not replace looking.
 
 ## 9. UI architecture
 
-Three presentation layers, sequential, never mixed:
+Three presentation layers plus one rendering refinement, sequential, never mixed:
 
 - **L1 — fixed logical canvas (done).** Game logic keeps its original 640×480
-  coordinates. SDL scales the canvas into the window and letterboxes the rest.
-  No new absolute coordinates may be introduced outside the design layer.
+  coordinates. No new absolute coordinates may be introduced outside the design
+  layer.
+- **L1.5 — native-density rendering (done).** The 640×480 coordinate space is
+  retained, but the screen texture is sized to the display area, design
+  coordinates are mapped with `SDL_SetRenderScale`, TTF glyphs are rasterised at
+  `pointSize × scale`, and the final blit is 1:1 with an explicit letterbox.
+  Mouse events are mapped back with `OverhaulWindowToDesign()`. This replaces
+  the original SDL logical-presentation upscale, which blurred small text on
+  fullscreen displays. Scale 1 is the original behaviour.
 - **L2 — anchored layout (next).** UI is placed relative to anchors. A wide
   window gains space; it does not stretch 4:3 art.
 - **L3 — HD assets (later).** A separate asset set. Runtime upscaling of the

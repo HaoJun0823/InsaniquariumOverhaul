@@ -84,6 +84,20 @@ PLAY_FLOW = (
     "280:click:320,427"      # Continue -> Board (the actual level)
 )
 
+# Native-density presentation guard: resize the real window before the
+# settled captures so every later frame exercises scale > 1. Without this,
+# the headless harness would only ever verify the 640x480 scale == 1 path.
+SCALED_FLOW = "20:resize:1280,960"
+
+# Same journey at 2x: after the resize, scripted mouse coordinates are window
+# coordinates, so design (240,427) becomes (480,854). This verifies that text
+# entry and widget hit-testing still line up when SDL no longer maps coords.
+SCALED_CLICK_PLAY = (
+    "20:resize:1280,960;"
+    "100:click:480,854;"
+    "130:text:Tester"
+)
+
 # scenario -> (extra env, expected widget class substring in the state trace)
 SCENARIOS = {
     # Normal play: the dead check-for-updates prompt must NOT appear.
@@ -99,6 +113,10 @@ SCENARIOS = {
     # Walk all the way into a live board: title -> user -> selector -> help
     # -> tank. Proves the whole "enter game" path, not just the first dialog.
     "play": ({"OVERHAUL_INPUT_SCRIPT": PLAY_FLOW}, "Board"),
+    # Native-density presentation guard: 2x window resize before capture.
+    "scaled": ({"OVERHAUL_INPUT_SCRIPT": SCALED_FLOW}, None),
+    # Text entry at 2x: proves the supersampled TTF path and hit-testing.
+    "scalednewuser": ({"OVERHAUL_INPUT_SCRIPT": SCALED_CLICK_PLAY}, "NewUserDialog"),
 }
 
 
@@ -252,8 +270,15 @@ def run_scenario(name, spec, seconds, driver):
     if not frames:
         problems.append("no frames exported")
     for f in frames:
-        if not f or (f["width"], f["height"]) != (640, 480):
-            problems.append(f"{f and f['name']}: not a 640x480 BMP")
+        # The scaled scenario resizes the window mid-run: frame 1 is still
+        # 640x480, later frames must be the native-density 1280x960 surface.
+        if name in ("scaled", "scalednewuser") and f and f["name"] != "frame_00001.bmp":
+            expected = (1280, 960)
+        else:
+            expected = (640, 480)
+        if not f or (f["width"], f["height"]) != expected:
+            problems.append(
+                f"{f and f['name']}: not a {expected[0]}x{expected[1]} BMP")
         elif f["bytes"] < 100_000 or f["distinct_sample_bytes"] < 8:
             problems.append(f"{f['name']}: blank or uniform frame")
 
@@ -286,7 +311,7 @@ def main():
 
     # Scripted journeys need more frames to reach their target screen than a
     # static title capture. Give them a floor regardless of --seconds.
-    min_seconds = {"newuser": 14, "play": 24}
+    min_seconds = {"newuser": 14, "play": 24, "scalednewuser": 14}
     names = list(SCENARIOS) if args.only == "all" else [args.only]
     ok = True
     for name in names:

@@ -1,6 +1,6 @@
 --- a/PopLib/graphics/sdlinterface.cpp
 +++ b/PopLib/graphics/sdlinterface.cpp
-@@ -5,10 +5,91 @@
+@@ -5,10 +5,113 @@
  #include "misc/critsect.hpp"
  #include "graphics.hpp"
  #include "memoryimage.hpp"
@@ -90,11 +90,33 @@
 +		SDL_DestroySurface(aRGB);
 +	SDL_DestroySurface(aSurface);
 +}
++// Overhaul: design (640x480) -> native pixel transform.
++namespace OverhaulPresentation {
++    static float sScaleX = 1.0f;
++    static float sScaleY = 1.0f;
++    static float sOffsetX = 0.0f;
++    static float sOffsetY = 0.0f;
++    static int sBufferW = 0;
++    static int sBufferH = 0;
++    static int sLastWindowW = 0;
++    static int sLastWindowH = 0;
++}
++
++float SDLInterface::OverhaulDrawScale() const
++{
++    return OverhaulPresentation::sScaleX;
++}
++
++void SDLInterface::OverhaulWindowToDesign(float theX, float theY, int &theOutX, int &theOutY) const
++{
++    theOutX = (int)((theX - OverhaulPresentation::sOffsetX) / OverhaulPresentation::sScaleX);
++    theOutY = (int)((theY - OverhaulPresentation::sOffsetY) / OverhaulPresentation::sScaleY);
++}
 +
  
  SDL_FPoint TransformToPoint(float x, float y, const Matrix3 &m, float aTransX = 0, float aTransY = 0)
  {
-@@ -105,10 +186,10 @@
+@@ -105,10 +208,50 @@
  	if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight))
  		return;
  
@@ -102,14 +124,92 @@
 -		return;
 -
 -	mPresentationRect = Rect(0, 0, windowWidth, windowHeight);
-+	if (!SDL_SetRenderLogicalPresentation(mRenderer, mWidth, mHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX))
++	// Redraw also calls this; skip the work when nothing changed.
++	if (OverhaulPresentation::sBufferW != 0 &&
++	    windowWidth == OverhaulPresentation::sLastWindowW &&
++	    windowHeight == OverhaulPresentation::sLastWindowH)
 +		return;
++	OverhaulPresentation::sLastWindowW = windowWidth;
++	OverhaulPresentation::sLastWindowH = windowHeight;
++
++	// Overhaul: native-density screen texture. The game still draws in
++	// 640x480 design coordinates, but the texture is as large as the
++	// display area so glyphs are rasterised at final pixel density.
++	float aScale = std::min((float)windowWidth / (float)mWidth,
++	                        (float)windowHeight / (float)mHeight);
++	if (aScale <= 0.0f)
++		aScale = 1.0f;
++	int aBufferW = std::max(1, (int)std::floor((float)mWidth * aScale));
++	int aBufferH = std::max(1, (int)std::floor((float)mHeight * aScale));
++
++	// We letterbox ourselves in Redraw; SDL must not scale a second time.
++	SDL_SetRenderLogicalPresentation(mRenderer, windowWidth, windowHeight,
++	                                 SDL_LOGICAL_PRESENTATION_DISABLED);
++
++	if (mScreenTexture != nullptr &&
++	    (aBufferW != OverhaulPresentation::sBufferW ||
++	     aBufferH != OverhaulPresentation::sBufferH))
++	{
++		SDL_DestroyTexture(mScreenTexture);
++		mScreenTexture = SDL_CreateTexture(mRenderer, SDL_PIXELFORMAT_RGBA8888,
++		                                  SDL_TEXTUREACCESS_TARGET, aBufferW, aBufferH);
++		if (mScreenTexture == nullptr)
++		{
++			std::fprintf(stderr, "[overhaul] screen texture %dx%d failed: %s\n",
++			             aBufferW, aBufferH, SDL_GetError());
++			return;
++		}
++	}
++	OverhaulPresentation::sBufferW = aBufferW;
++	OverhaulPresentation::sBufferH = aBufferH;
++	OverhaulPresentation::sScaleX = (float)aBufferW / (float)mWidth;
++	OverhaulPresentation::sScaleY = (float)aBufferH / (float)mHeight;
++	OverhaulPresentation::sOffsetX = (float)(windowWidth - aBufferW) * 0.5f;
++	OverhaulPresentation::sOffsetY = (float)(windowHeight - aBufferH) * 0.5f;
 +
 +	mPresentationRect = Rect(0, 0, mWidth, mHeight);
  }
  
  int SDLInterface::Init(bool IsWindowed)
-@@ -215,6 +296,9 @@
+@@ -197,24 +340,38 @@
+ 	// HACK: i dont know where to put this
+ 	mApp->mIGUIManager->Frame();
+ 
+-	SDL_SetRenderTarget(mRenderer, nullptr);
+-
+-	SDL_SetRenderDrawColor(mRenderer, 0, 0, 0, 0);
++	// Re-read the window size every frame. Scripted resizes and some
++	// window-manager transitions do not deliver RESIZED reliably.
++	UpdateViewport();
++	SDL_SetRenderTarget(mRenderer, nullptr);
++	SDL_SetRenderScale(mRenderer, 1.0f, 1.0f);
++
++	SDL_SetRenderDrawColor(mRenderer, 0, 0, 0, 255);
+ 	SDL_SetTextureBlendMode(mScreenTexture, SDL_BLENDMODE_BLEND);
+ 	SDL_RenderClear(mRenderer);
+ 
+-	SDL_Rect clipRect =
+-		theClipRect
+-			? SDL_Rect{theClipRect->mX, theClipRect->mY, theClipRect->mWidth, theClipRect->mHeight}
+-			: SDL_Rect{mPresentationRect.mX, mPresentationRect.mY, mPresentationRect.mWidth, mPresentationRect.mHeight};
+-
++	SDL_FRect aDest = {OverhaulPresentation::sOffsetX, OverhaulPresentation::sOffsetY,
++	                   (float)OverhaulPresentation::sBufferW, (float)OverhaulPresentation::sBufferH};
++	SDL_FRect aClip = aDest;
++	if (theClipRect != nullptr)
++	{
++		aClip.x = aDest.x + (float)theClipRect->mX * OverhaulPresentation::sScaleX;
++		aClip.y = aDest.y + (float)theClipRect->mY * OverhaulPresentation::sScaleY;
++		aClip.w = (float)theClipRect->mWidth * OverhaulPresentation::sScaleX;
++		aClip.h = (float)theClipRect->mHeight * OverhaulPresentation::sScaleY;
++	}
++	SDL_Rect clipRect = {(int)aClip.x, (int)aClip.y, (int)aClip.w, (int)aClip.h};
+ 	SDL_SetRenderClipRect(mRenderer, &clipRect);
+ 
+-	PopLib::gSDLInterfacePreDrawError = (SDL_RenderTexture(mRenderer, mScreenTexture, nullptr, nullptr) < 0);
++	PopLib::gSDLInterfacePreDrawError =
++		(SDL_RenderTexture(mRenderer, mScreenTexture, nullptr, &aDest) < 0);
+ 
  	if (ImGui::GetDrawData() != nullptr)
  		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), mRenderer);
  
@@ -119,7 +219,7 @@
  	SDL_RenderPresent(mRenderer);
  
  	return !PopLib::gSDLInterfacePreDrawError;
-@@ -303,7 +387,11 @@
+@@ -303,7 +460,11 @@
  
  void SDLInterface::MakeSimpleMessageBox(const char *theTitle, const char *theMessage, SDL_MessageBoxFlags flags)
  {
@@ -132,16 +232,110 @@
  }
  
  int SDLInterface::MakeResultMessageBox(SDL_MessageBoxData data)
-@@ -766,7 +854,7 @@
- {
- 	SDL_SetRenderTarget(mRenderer, mScreenTexture);
+@@ -518,7 +679,8 @@
+ 	SDLTextureData *texData = static_cast<SDLTextureData *>(memImg->mD3DData);
+ 	SDL_Texture *texture = texData->mTexture;
  
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_SetTextureColorMod(texture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+ 	SDL_SetTextureAlphaMod(texture, theColor.GetAlpha());
+@@ -544,7 +706,8 @@
+ 
+ 	SDLTextureData *aData = (SDLTextureData *)aSrcMemoryImage->mD3DData;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_Texture *aTexture = aData->mTexture;
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+@@ -577,7 +740,8 @@
+ 
+ 	SDLTextureData *aData = (SDLTextureData *)aSrcMemoryImage->mD3DData;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_Texture *aTexture = aData->mTexture;
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+@@ -602,7 +766,8 @@
+ 	SDLTextureData *aData = static_cast<SDLTextureData *>(aSrcMemoryImage->mD3DData);
+ 	SDL_Texture *aTexture = aData->mTexture;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+ 	SDL_SetTextureAlphaMod(aTexture, theColor.GetAlpha());
+ 	SDL_SetTextureScaleMode(aTexture, fastStretch ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
+@@ -640,7 +805,8 @@
+ 	if (!aTexture)
+ 		return;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+ 	SDL_SetTextureAlphaMod(aTexture, theColor.GetAlpha());
+@@ -678,7 +844,8 @@
+ 		return;
+ 
+ 	SDL_Texture *aTexture = aData->mTexture;
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+ 	SDL_SetTextureAlphaMod(aTexture, theColor.GetAlpha());
+@@ -732,7 +899,8 @@
+ 	if (!mRenderer)
+ 		return;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_SetRenderDrawBlendMode(mRenderer, ChooseBlendMode(theDrawMode));
+ 	SDL_SetRenderDrawColor(mRenderer, theColor.mRed, theColor.mGreen, theColor.mBlue, theColor.mAlpha);
+@@ -748,7 +916,8 @@
+ 	if (!mRenderer)
+ 		return;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_FRect theSDLRect = {theRect.mX, theRect.mY, theRect.mWidth, theRect.mHeight};
+ 
+@@ -764,9 +933,10 @@
+ void SDLInterface::DrawTriangle(const TriVertex &p1, const TriVertex &p2, const TriVertex &p3, const Color &theColor,
+ 								int theDrawMode)
+ {
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
+-
 -	SDL_FColor aColor = {theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue(), theColor.GetAlpha()};
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
++
 +	SDL_FColor aColor = {theColor.GetRed() / 255.0f, theColor.GetGreen() / 255.0f, theColor.GetBlue() / 255.0f, theColor.GetAlpha() / 255.0f};
  
  	int indices[] = {0, 1, 2};
  
-@@ -795,7 +883,7 @@
+@@ -788,14 +958,15 @@
+ 
+ 	SDLTextureData *aData = (SDLTextureData *)aSrcMemoryImage->mD3DData;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_Texture *aTexture = aData->mTexture;
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
  	SDL_SetTextureAlphaMod(aTexture, theColor.GetAlpha());
  	SDL_SetTextureBlendMode(aTexture, ChooseBlendMode(theDrawMode));
  
@@ -150,7 +344,17 @@
  
  	int indices[] = {0, 1, 2};
  
-@@ -889,7 +977,7 @@
+@@ -817,7 +988,8 @@
+ 
+ 	SDLTextureData *aData = (SDLTextureData *)aSrcMemoryImage->mD3DData;
+ 
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_Texture *aTexture = aData->mTexture;
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+@@ -889,11 +1061,12 @@
  		uvs.push_back(v.u);
  		uvs.push_back(v.v);
  
@@ -159,3 +363,19 @@
  		colors.push_back(color);
  	}
  
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 	SDL_SetTextureBlendMode(aTexture, ChooseBlendMode(theDrawMode));
+ 	SDL_SetTextureColorMod(aTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+ 	SDL_SetTextureAlphaMod(aTexture, theColor.GetAlpha());
+@@ -935,7 +1108,8 @@
+ void SDLInterface::BltTexture(SDL_Texture *theTexture, const SDL_FRect &theSrcRect, const SDL_FRect &theDestRect,
+ 				const Color &theColor, int theDrawMode)
+ {
+-	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderTarget(mRenderer, mScreenTexture);
++	SDL_SetRenderScale(mRenderer, OverhaulPresentation::sScaleX, OverhaulPresentation::sScaleY);
+ 
+ 	SDL_SetTextureColorMod(theTexture, theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue());
+ 	SDL_SetTextureAlphaMod(theTexture, theColor.GetAlpha());

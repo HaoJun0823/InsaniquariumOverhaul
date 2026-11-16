@@ -117,7 +117,7 @@ this table to find the file.
 |---|---|---|---|
 | New functionality, pure logic | **P4** | `port/src/overhaul/` + `port/tests/` | `overhaul.py build`, `ctest` |
 | Entry point / crash handler | **P3** | `port/fixups/Window.cpp` (whole-file overlay) | `overhaul.py derive` |
-| PopLib behavior / build | **P3** | `port/make-patches.py` (`EDITS`, `HELPER`, `CAPTURE_FUNC`, `HEADLESS_FUNC`) | `overhaul.py patch --regenerate` |
+| PopLib behavior / build | **P3** | `port/make-patches.py` (`EDITS`, `HELPER`, `CAPTURE_FUNC`, `HEADLESS_FUNC`, `PRESENTATION_HELPER`) | `overhaul.py patch --regenerate` |
 | Headless input / state probe | **P3** | `port/make-patches.py` (`HEADLESS_FUNC` → `appbase.cpp`) | `overhaul.py patch --regenerate` |
 | Game behaviour (bugs, port features) | **P3** | `port/fixups/apply-gamefixes.py` | `overhaul.py derive` |
 | Mechanical renames / includes / platform API | **P2** | `port/port.sh`, `apply-portability.py`, `apply-blocks.py`, `port/include-map.txt` | `overhaul.py derive` |
@@ -282,6 +282,8 @@ minimal reproduction. "It crashed" alone is not a report.
 | SDL dummy | passes headless, fails on the desktop | Dummy is not a rendering test. Real-driver smoke test is mandatory for UI. |
 | PopCap XML dialect | `XML_ERROR_PARSING_ATTRIBUTE` | Bare attributes (`cols=3`) and private entities (`&cr;`, `&nbsp;`) are normalized in `xmlparser.cpp`. |
 | 256-glyph `ImageFont` | CJK missing or wrong glyphs | Never use `ImageFont` for CJK. Use `SysFont` (SDL_ttf). |
+| `SysFont` clip rect | typed name / selected text painted black over the whole field | `EditWidget` draws its highlight pass with a clip; `SysFont::DrawString` must intersect `theClipRect` exactly as `ImageFont` does. Never drop the clip when changing text rendering. |
+| Native-density scale split | text sharp at 640×480 but soft after resize/fullscreen; clicks miss | `OverhaulDrawScale()` (render) and `OverhaulWindowToDesign()` (input) must use the same transform. TTF is rendered at `pointSize × scale`; the screen texture is sized to the display area and blitted 1:1. |
 | Hardcoded 640×480 | layout breaks at other sizes | L1 letterboxes; L2 must use anchors, not new magic coordinates. |
 | Ungraceful shutdown | update prompt appears on next launch | `InProgress: 1` means "previous run did not exit cleanly". Do not kill the process during normal testing. |
 
@@ -369,6 +371,14 @@ Human reviewer checklist:
 
 - **L1 (done)**: fixed 640×480 logical canvas, SDL letterbox. Game logic keeps
   its original coordinates. Do not add new absolute coordinates outside L1.
+- **L1.5 (done)**: native-density presentation. The screen texture is sized to
+  the display area, design coordinates are mapped with `SDL_SetRenderScale`,
+  TTF glyphs are rasterised at `pointSize × scale`, and mouse events are mapped
+  back with `OverhaulWindowToDesign()`. The final blit is 1:1 with an explicit
+  letterbox; SDL logical presentation is disabled. This removes fullscreen text
+  blur without changing any game coordinate. `scale == 1` is the original path
+  and is what the static headless scenarios exercise; `scaled` / `scalednewuser`
+  cover `scale > 1`.
 - **L2 (next)**: anchored layout. Introduce a `LayoutContext` (design size,
   actual size, safe area, scale) and place UI relative to anchors. Wide screens
   must gain space, not stretch art.
@@ -401,6 +411,9 @@ Human reviewer checklist:
 | ~~P0~~ **fixed** | "Crash on entry": clicking PLAY exited with code 127, no `crash.txt`, no C++ exception. | Root cause: `SysFont::Duplicate()` shallow-copied `TTF_Font*`; the copy's destructor closed the font still in use, corrupting the heap when `NewUserDialog` was built. Fixed with a shared `int *mRefCount` (see §8). Reproduced and verified by the `newuser` and `play` scenarios. |
 | ~~P0~~ **fixed** | No automated input injection; the title → PLAY → board path was untested. | Added frame-scheduled real SDL input (`OVERHAUL_INPUT_SCRIPT`) and a UI state trace (`OVERHAUL_STATE_FILE`). `run-capture-test.py` now has `newuser` and `play` scenarios that assert the expected widget class is reached. |
 | P1 | `ui.ttf` is a local copy of a system font. | Replace with an OFL font before any release. |
+| ~~P1~~ **fixed** | Username text was black-on-dark and unreadable in `NewUserDialog`. | `SysFont::DrawString` ignored `theClipRect`, so `EditWidget`'s black highlight pass covered the whole field. The destination/source rects are now clipped; `newuser` scenario verifies a light, readable name. |
+| ~~P1~~ **fixed** | Text became soft/blurry after fullscreen or window resize. | L1.5 native-density presentation: native-sized screen texture, `SDL_SetRenderScale` for design coordinates, TTF rendered at scaled point size, 1:1 final blit. `scaled` and `scalednewuser` scenarios export 1280×960 frames as evidence. |
+| ~~P1~~ **not reproducible** | Borderless/fullscreen crash reported by the maintainer. | First reproduced from an inconsistent patched work tree; after a clean `external/poplib` checkout + regenerate + rebuild it never recurred on dummy or desktop drivers, and the maintainer confirmed. The L1.5 resize path now has a standing regression scenario. |
 | P1 | L2/L3, string extraction, Linux/macOS. | See §12. |
 | P1 | Physical input devices and real-driver rendering are not covered by headless capture. | Run the desktop smoke test (§5 step 6) before claiming an input/rendering fix; a human still needs to confirm the visual result. |
 | P2 | Two legacy FishSongMgr fixups were reporting false `[FAILED]` because upstream already contains the fix. | Anchors corrected; the derive log is now clean. |

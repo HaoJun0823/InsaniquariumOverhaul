@@ -1,41 +1,46 @@
 --- a/PopLib/graphics/sysfont.cpp
 +++ b/PopLib/graphics/sysfont.cpp
-@@ -7,7 +7,8 @@
+@@ -7,7 +7,10 @@
  #include "sdlinterface.hpp"
  #include "widget/widgetmanager.hpp"
  
 -#include <stdlib.h>
 +#include <stdlib.h>
 +#include <string.h>
++#include <algorithm>
++#include <cmath>
  
  using namespace PopLib;
  
-@@ -26,6 +27,7 @@
+@@ -26,6 +29,8 @@
  				 bool bold, bool italics, bool underline)
  {
  	mApp = theApp;
 +	mRefCount = new int(1);
++	mPointSize = thePointSize;
  	SDL_IOStream *io = SDL_IOFromConstMem((void *)aData, aDataSize);
  	if (!io)
  	{
-@@ -54,6 +56,7 @@
+@@ -54,6 +59,8 @@
  				   bool italics, bool underline, bool useDevCaps)
  {
  	mApp = theApp;
 +	mRefCount = new int(1);
++	mPointSize = thePointSize;
  
  	mTTFFont = TTF_OpenFont(theFace.c_str(), thePointSize);
  	if (!mTTFFont)
-@@ -74,6 +77,8 @@
+@@ -74,6 +81,9 @@
  SysFont::SysFont(const SysFont &theSysFont)
  {
  	mTTFFont = theSysFont.mTTFFont;
 +	mRefCount = theSysFont.mRefCount;
++	mPointSize = theSysFont.mPointSize;
 +	++(*mRefCount);
  	mApp = theSysFont.mApp;
  	mHeight = theSysFont.mHeight;
  	mAscent = theSysFont.mAscent;
-@@ -84,7 +89,14 @@
+@@ -84,7 +94,14 @@
  
  SysFont::~SysFont()
  {
@@ -51,7 +56,16 @@
  }
  
  ImageFont *SysFont::CreateImageFont()
-@@ -198,12 +210,21 @@
+@@ -194,17 +211,58 @@
+ {
+ 	SDL_Renderer *renderer = mApp->mSDLInterface->mRenderer;
+ 	SDL_Color aColor = {(Uint8)theColor.mRed, (Uint8)theColor.mGreen, (Uint8)theColor.mBlue, (Uint8)theColor.mAlpha};
++	const float aSS = mApp->mSDLInterface->OverhaulDrawScale();
++	const int aRenderSize = std::max(1, (int)std::lround((float)mPointSize * aSS));
++	const bool aFontResized = (aRenderSize != mPointSize);
++	if (aFontResized)
++		TTF_SetFontSize(mTTFFont, aRenderSize);
+ 	SDL_Surface *textSurface =
  		TTF_RenderText_Blended(mTTFFont, theString.c_str(), 0, aColor);
  	if (!textSurface)
  	{
@@ -59,23 +73,52 @@
 +		// SDL_ttf reports 'Text has zero width' for empty / zero-width
 +		// strings. That is a normal no-op, not a fatal error dialog.
 +		const char *aTtfError = SDL_GetError();
++		if (aFontResized)
++			TTF_SetFontSize(mTTFFont, mPointSize);
 +		if (aTtfError != nullptr && strstr(aTtfError, "zero width") != nullptr)
 +			return;
 +		mApp->mSDLInterface->MakeSimpleMessageBox("Failed to render text: ", aTtfError, SDL_MESSAGEBOX_ERROR);
  		return;
  	}
  
++	if (aFontResized)
++		TTF_SetFontSize(mTTFFont, mPointSize);
  	SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
 -	SDL_FRect dstRect = {(float)theX, (float)theY - (float)mAscent, (float)textSurface->w, (float)textSurface->h};
+-	SDL_FRect srcRect = {0, 0, dstRect.w, dstRect.h};
 +	// Overhaul: honour Graphics::Translate() like Graphics::DrawImage does.
++	// The glyph texture is aSS times larger than the design rect; draw
++	// it back at design size so the native-density screen texture maps
++	// it 1:1 instead of upscaling a small texture.
 +	const float aTransX = g->mTransX;
 +	const float aTransY = g->mTransY;
 +	SDL_FRect dstRect = {(float)theX + aTransX, (float)theY - (float)mAscent + aTransY,
-+	                     (float)textSurface->w, (float)textSurface->h};
- 	SDL_FRect srcRect = {0, 0, dstRect.w, dstRect.h};
++	                     (float)textSurface->w / aSS, (float)textSurface->h / aSS};
++	SDL_FRect srcRect = {0, 0, (float)textSurface->w, (float)textSurface->h};
++	// Overhaul: honour theClipRect like ImageFont does. The clip is in
++	// design space, the source rect in supersampled glyph pixels.
++	float aCX0 = (float)theClipRect.mX, aCY0 = (float)theClipRect.mY;
++	float aCX1 = aCX0 + (float)theClipRect.mWidth, aCY1 = aCY0 + (float)theClipRect.mHeight;
++	float aX0 = std::max(dstRect.x, aCX0), aY0 = std::max(dstRect.y, aCY0);
++	float aX1 = std::min(dstRect.x + dstRect.w, aCX1), aY1 = std::min(dstRect.y + dstRect.h, aCY1);
++	if (aX1 > aX0 && aY1 > aY0)
++	{
++		srcRect.x = (aX0 - dstRect.x) * aSS;
++		srcRect.y = (aY0 - dstRect.y) * aSS;
++		srcRect.w = (aX1 - aX0) * aSS;
++		srcRect.h = (aY1 - aY0) * aSS;
++		dstRect.x = aX0; dstRect.y = aY0; dstRect.w = aX1 - aX0; dstRect.h = aY1 - aY0;
++	}
++	else
++	{
++		SDL_DestroyTexture(textTexture);
++		SDL_DestroySurface(textSurface);
++		return;
++	}
  	SDL_DestroySurface(textSurface);
  
-@@ -215,7 +236,7 @@
+ 	if (!textTexture)
+@@ -215,7 +273,7 @@
  
  	if (mDrawShadow)
  	{
