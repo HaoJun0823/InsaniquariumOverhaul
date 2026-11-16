@@ -154,6 +154,14 @@ def run_scenario(name, spec, seconds, driver):
     })
     env.update(extra_env)
 
+    # A real-driver window spawned by the harness starts in the background:
+    # SDL sends WINDOW_FOCUS_LOST, PopLib sets mActive=false, and WidgetManager
+    # ignores clicks. A human focuses the window before clicking PLAY, so do
+    # the same here. Headless/dummy never loses focus, so it needs no help.
+    if driver == "desktop" and "OVERHAUL_INPUT_SCRIPT" in env:
+        env["OVERHAUL_INPUT_SCRIPT"] = (
+            "10:focus:0;" + env["OVERHAUL_INPUT_SCRIPT"])
+
     proc = subprocess.Popen(
         [str(EXE)], cwd=str(BIN), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,

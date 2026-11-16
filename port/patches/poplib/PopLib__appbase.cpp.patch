@@ -1,6 +1,6 @@
 --- a/PopLib/appbase.cpp
 +++ b/PopLib/appbase.cpp
-@@ -52,7 +52,239 @@
+@@ -52,7 +52,253 @@
  // H522
  #include <json.hpp>
  
@@ -152,6 +152,7 @@
 +				else if (aAction == "click") aKind = 1;
 +				else if (aAction == "key") aKind = 2;
 +				else if (aAction == "text") aKind = 3;
++				else if (aAction == "focus") aKind = 4;
 +				if (aKind < 0)
 +					continue;
 +				int aX = 0, aY = 0;
@@ -212,6 +213,19 @@
 +			std::fprintf(stderr, "[overhaul-input] frame=%d key %d\n",
 +				aFrame, aAct.mX);
 +		}
++		else if (aAct.mKind == 4)
++		{
++			// A real-driver window started in the background has mActive=false
++			// after SDL_EVENT_WINDOW_FOCUS_LOST, so WidgetManager ignores clicks.
++			// A human focuses the window before clicking; synthesize that event
++			// so desktop scripted runs follow the same path.
++			SDL_Event aEvent;
++			std::memset(&aEvent, 0, sizeof(aEvent));
++			aEvent.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
++			SDL_PushEvent(&aEvent);
++			std::fprintf(stderr, "[overhaul-input] frame=%d focus gained\n",
++				aFrame);
++		}
 +		else
 +		{
 +			// TEXT_INPUT feeds EditWidget (new-user name, fish names).
@@ -241,7 +255,7 @@
  
  namespace fs = std::filesystem;
  
-@@ -2194,9 +2426,19 @@
+@@ -2194,9 +2440,19 @@
  //  it won't keep crashing and stuff
  bool AppBase::ProcessDeferredMessages(bool singleMessage)
  {

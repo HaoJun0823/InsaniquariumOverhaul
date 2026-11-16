@@ -102,7 +102,9 @@ static void OverhaulMaybeCapture(SDL_Renderer *theRenderer, int theFrame)
 # as a physical mouse. No direct widget calls, no test-only backdoors.
 #
 #   OVERHAUL_INPUT_SCRIPT = "90:move:240,427;95:click:240,427;180:text:Tester;200:click:465,81"
-#       frame:action:arg  -- action = move | click | key | text
+#       frame:action:arg  -- action = move | click | key | text | focus
+#       focus synthesizes SDL_EVENT_WINDOW_FOCUS_GAINED (arg ignored); needed
+#       on real-driver runs where a background window has no OS focus.
 #       frames are AppBase::mUpdateCount values; events are pushed when the
 #       count first reaches the frame, then consumed by the real event pump.
 #   OVERHAUL_STATE_FILE  = path to an NDJSON trace of widget-tree state
@@ -257,6 +259,7 @@ void OverhaulHeadlessTick(AppBase *theApp)
 				else if (aAction == "click") aKind = 1;
 				else if (aAction == "key") aKind = 2;
 				else if (aAction == "text") aKind = 3;
+				else if (aAction == "focus") aKind = 4;
 				if (aKind < 0)
 					continue;
 				int aX = 0, aY = 0;
@@ -316,6 +319,19 @@ void OverhaulHeadlessTick(AppBase *theApp)
 			SDL_PushEvent(&aEvent);
 			std::fprintf(stderr, "[overhaul-input] frame=%d key %d\n",
 				aFrame, aAct.mX);
+		}
+		else if (aAct.mKind == 4)
+		{
+			// A real-driver window started in the background has mActive=false
+			// after SDL_EVENT_WINDOW_FOCUS_LOST, so WidgetManager ignores clicks.
+			// A human focuses the window before clicking; synthesize that event
+			// so desktop scripted runs follow the same path.
+			SDL_Event aEvent;
+			std::memset(&aEvent, 0, sizeof(aEvent));
+			aEvent.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
+			SDL_PushEvent(&aEvent);
+			std::fprintf(stderr, "[overhaul-input] frame=%d focus gained\n",
+				aFrame);
 		}
 		else
 		{

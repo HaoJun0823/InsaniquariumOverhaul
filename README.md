@@ -185,6 +185,12 @@ widget 处理路径（不是测试专用后门）。`OVERHAUL_STATE_FILE` 记录
 manifest 的 `expect_widget` 字段声明该场景必须到达的界面；没到达或产生 `crash.txt`
 即判失败。这正是把「点击 PLAY 崩溃」变成一条可复现自动测试的做法。
 
+输入脚本动作：`move x,y` / `click x,y` / `key <SDL keycode>` / `text <字符串>` /
+`focus`（合成 `SDL_EVENT_WINDOW_FOCUS_GAINED`）。`--driver desktop` 时脚本自动前置
+`10:focus:0`——真实窗口在后台启动会收到 `WINDOW_FOCUS_LOST`，PopLib 把 `mActive`
+置 false 后忽略点击，而真人会先点一下窗口再操作；dummy 驱动不会失焦，无需此步。
+加此步后 `python port/run-capture-test.py --driver desktop --only play` 也能到达 `Board`。
+
 帧导出由 `sdlinterface.cpp` 补丁的 `OVERHAUL_CAPTURE_*` 提供，不设变量时零开销；
 `force` 场景专门守着 `SysFont` 坐标修复，避免以后换字体或改布局时又把
 所有对话框文字推回左上角。

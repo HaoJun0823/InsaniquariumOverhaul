@@ -485,6 +485,7 @@ explains its own run. A new switch must be added to
 | `click` | `x,y` | push motion + button down + button up |
 | `key` | SDL key name | push key down + key up |
 | `text` | UTF-8 string | push `SDL_EVENT_TEXT_INPUT` |
+| `focus` | ignored | push `SDL_EVENT_WINDOW_FOCUS_GAINED` |
 
 Coordinates are in the 640×480 logical canvas. Steps are injected as **real SDL
 events** into the normal event pump, so they drive the same widget handlers as a
@@ -492,6 +493,12 @@ human click — no test-only back door. `run-capture-test.py` builds these strin
 from `CLICK_PLAY` / `NEW_USER_FLOW` / `PLAY_FLOW`; do not hand-write long scripts
 in shell commands. The paired `OVERHAUL_STATE_FILE` records the widgets present
 after each step, which is the evidence that a screen was actually reached.
+
+A real-driver window spawned by the harness has no OS focus: SDL sends
+`WINDOW_FOCUS_LOST`, PopLib sets `mActive=false`, and `WidgetManager` ignores
+clicks. `run-capture-test.py` therefore prepends `10:focus:0` to scripted
+scenarios only for `--driver desktop`, mirroring a human focusing the window
+before clicking. Dummy video never loses focus and needs no such step.
 
 ---
 
